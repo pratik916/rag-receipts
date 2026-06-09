@@ -49,8 +49,12 @@ de-facto standard, not as a verified-best option.
    (primary multi-hop; 2WikiMultihopQA moved to stretch)** — plus
    bring-your-own-documents ingestion (kept in v1 at user's choice; built last,
    designated first cut if v1 drags).
-2. **Stack:** Python; LlamaIndex for readers/chunking and retrieval plumbing; LangGraph
-   for the agentic control layer. (Framework-free was offered and declined.)
+2. **Stack:** Python; LlamaIndex + LangGraph for the agentic control layer. *(v3 amendment,
+   recorded during plan writing: LlamaIndex is used for BYO document readers only — chunking
+   and retrieval plumbing are implemented directly, because this spec itself mandates
+   bypassing LlamaIndex's per-node embedding path for contextualization, and direct bm25s/
+   qdrant-client integration is what the receipts measure. Framework-free overall was
+   offered and declined.)
 3. **Vendors:** best-in-class multi-vendor — voyage-context-3 embeddings, **Cohere
    Rerank v4.0 Pro** (the variant benchmarked in arXiv 2604.01733; `rerank-v4.0-fast`
    available as config option), Claude for routing/grading/synthesis/judging. Three
