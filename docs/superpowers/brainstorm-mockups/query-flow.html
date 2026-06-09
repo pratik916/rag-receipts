@@ -1,0 +1,41 @@
+<h2>Query plane — LangGraph state machine</h2>
+<p class="subtitle">Green = System-1 fast path. Orange = System-2 loop, hard-bounded at 3 hops. Every node emits TraceEvents.</p>
+
+<div style="font-size:12px; max-width:760px; margin:0 auto;">
+  <div style="border:1px solid #888; border-radius:8px; padding:8px; text-align:center; width:300px; margin:0 auto;">
+    <b>route</b><br><span style="font-size:10px; color:#666;">Claude (haiku-tier) classifies: simple lookup vs multi-hop/comparative · emits route + confidence</span>
+  </div>
+  <div style="display:flex; justify-content:center; gap:120px; margin:2px 0;">
+    <span>↙ simple</span><span>↘ complex</span>
+  </div>
+
+  <div style="display:flex; gap:16px; align-items:flex-start;">
+    <!-- System 1 -->
+    <div style="flex:1; border:2px solid #4a7; border-radius:10px; padding:10px;">
+      <div class="label" style="text-align:center; color:#4a7;">SYSTEM-1 FAST PATH</div>
+      <div style="border:1px solid #888; border-radius:8px; padding:6px; margin:6px 0; text-align:center;"><b>s1_retrieve</b><br><span style="font-size:10px; color:#666;">hybrid (Qdrant + bm25s) → RRF top-50 → Cohere rerank → top-5</span></div>
+      <div style="text-align:center;">↓</div>
+      <div style="border:1px solid #888; border-radius:8px; padding:6px; margin:6px 0; text-align:center;"><b>s1_answer</b><br><span style="font-size:10px; color:#666;">Claude answers with inline [n] citations, abstains if evidence is thin</span></div>
+      <div style="text-align:center;">↓ END</div>
+    </div>
+
+    <!-- System 2 -->
+    <div style="flex:1.4; border:2px solid #c80; border-radius:10px; padding:10px;">
+      <div class="label" style="text-align:center; color:#c80;">SYSTEM-2 AGENTIC LOOP (max 3 hops)</div>
+      <div style="border:1px solid #888; border-radius:8px; padding:6px; margin:6px 0; text-align:center;"><b>decompose</b><br><span style="font-size:10px; color:#666;">Claude splits into sub-queries with dependency order</span></div>
+      <div style="text-align:center;">↓</div>
+      <div style="border:1px solid #888; border-radius:8px; padding:6px; margin:6px 0; text-align:center;"><b>retrieve_hop</b><br><span style="font-size:10px; color:#666;">same shared retrieval core, one sub-query at a time; earlier hop answers fill later sub-queries</span></div>
+      <div style="text-align:center;">↓</div>
+      <div style="border:1px solid #888; border-radius:8px; padding:6px; margin:6px 0; text-align:center;"><b>grade</b> (CRAG-style)<br><span style="font-size:10px; color:#666;">Claude judges evidence sufficiency per sub-query: sufficient / insufficient / contradictory</span></div>
+      <div style="display:flex; justify-content:space-between; font-size:11px; margin:4px 8px;">
+        <span>↓ sufficient</span><span style="color:#c80;">↺ insufficient → <b>refine</b> (rewrite sub-query) → retrieve_hop<br><span style="font-size:10px; color:#666;">if hop budget left, else proceed with caveat</span></span>
+      </div>
+      <div style="border:1px solid #888; border-radius:8px; padding:6px; margin:6px 0; text-align:center;"><b>synthesize</b><br><span style="font-size:10px; color:#666;">Claude composes final answer across hops, cites per-hop evidence, flags any unresolved sub-query</span></div>
+      <div style="text-align:center;">↓ END</div>
+    </div>
+  </div>
+
+  <div style="border:1px solid #ccc; border-radius:8px; padding:8px; margin-top:10px; text-align:center; font-size:11px; color:#666;">
+    Every node appends TraceEvents (inputs, outputs, scores, model, tokens, ms) → SQLite → Playground renders the full hop-by-hop trace
+  </div>
+</div>

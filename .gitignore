@@ -1,0 +1,24 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Data (downloaded benchmark slices, indexes)
+data/
+*.sqlite
+qdrant_storage/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+.next/
+
+# Tooling
+.superpowers/
+.playwright-mcp/

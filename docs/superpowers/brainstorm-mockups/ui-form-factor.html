@@ -1,0 +1,93 @@
+<h2>Which form factor for the demo UI?</h2>
+<p class="subtitle">All three ship the same engine + ablation receipts underneath — this decides what a visitor sees and how much frontend work we take on. Click one to select.</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Full web app — Playground + Ablation Lab</h3>
+      <p>FastAPI backend + polished React/Next.js frontend. Two main views: a query playground showing the route the engine chose, retrieved chunks with fusion/rerank scores, and the cited answer — plus an Ablation Lab tab with component-delta charts.</p>
+      <div class="mockup">
+        <div class="mockup-header">Playground view</div>
+        <div class="mockup-body">
+          <div class="mock-nav">⚡ RAG Receipts &nbsp;|&nbsp; <b>Playground</b> &nbsp;·&nbsp; Ablation Lab &nbsp;·&nbsp; Corpora</div>
+          <div style="display:flex; gap:10px; margin-top:8px;">
+            <div style="flex:1.2;">
+              <input class="mock-input" placeholder="Ask: Which company acquired the firm founded by…?" style="width:95%;">
+              <div style="margin:8px 0; padding:6px 10px; border:1px dashed #999; border-radius:6px; font-size:12px;">
+                🧭 Router: <b>System-2 (agentic)</b> — multi-hop detected · 2 sub-queries · 1 correction loop
+              </div>
+              <div class="placeholder" style="min-height:70px; padding:8px; font-size:12px;">Answer with inline citations [1][3] …</div>
+            </div>
+            <div style="flex:1;">
+              <div class="label">Retrieved chunks</div>
+              <div style="border:1px solid #ccc; border-radius:6px; padding:6px; margin:4px 0; font-size:11px;">#1 · RRF 0.42 → rerank <b>0.91</b> · 10-K p.34</div>
+              <div style="border:1px solid #ccc; border-radius:6px; padding:6px; margin:4px 0; font-size:11px;">#2 · RRF 0.39 → rerank <b>0.84</b> · wiki/Acme</div>
+              <div style="border:1px solid #ccc; border-radius:6px; padding:6px; margin:4px 0; font-size:11px;">#3 · RRF 0.31 → rerank <b>0.77</b> · news/2024</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="mockup">
+        <div class="mockup-header">Ablation Lab view</div>
+        <div class="mockup-body">
+          <div class="label">Recall@5 by configuration (MuSiQue slice)</div>
+          <div style="font-size:11px; margin-top:6px;">
+            <div style="display:flex; align-items:center; gap:6px; margin:3px 0;"><span style="width:130px;">BM25 only</span><div style="background:#bbb; height:12px; width:38%;"></div><span>0.51</span></div>
+            <div style="display:flex; align-items:center; gap:6px; margin:3px 0;"><span style="width:130px;">+ dense + RRF</span><div style="background:#999; height:12px; width:48%;"></div><span>0.64</span></div>
+            <div style="display:flex; align-items:center; gap:6px; margin:3px 0;"><span style="width:130px;">+ contextual chunks</span><div style="background:#777; height:12px; width:52%;"></div><span>0.69</span></div>
+            <div style="display:flex; align-items:center; gap:6px; margin:3px 0;"><span style="width:130px;">+ reranker</span><div style="background:#4a7; height:12px; width:62%;"></div><span><b>0.82</b></span></div>
+          </div>
+        </div>
+      </div>
+      <p style="font-size:12px;">Most impressive to a visitor; most frontend work. Best for a hosted live demo.</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Streamlit app — toggles + instant metrics</h3>
+      <p>Single Python codebase. Sidebar toggles flip components on/off; main pane re-runs the eval slice and redraws the chart. Fast to build, demo-able in minutes, slightly less polished look.</p>
+      <div class="mockup">
+        <div class="mockup-header">Streamlit layout</div>
+        <div class="mockup-body">
+          <div style="display:flex; gap:10px;">
+            <div class="mock-sidebar" style="min-width:140px; font-size:11px;">
+              <div class="label">Components</div>
+              <div>☑ BM25</div><div>☑ Dense (voyage-ctx-3)</div><div>☑ RRF fusion</div><div>☑ Cohere rerank</div><div>☐ Graph (HippoRAG-2)</div><div>☑ Agentic router</div>
+              <button class="mock-button" style="margin-top:8px;">Run eval slice</button>
+            </div>
+            <div class="mock-content" style="flex:1; font-size:11px;">
+              <div class="label">Recall@5 · MRR@3 · faithfulness</div>
+              <div class="placeholder" style="min-height:60px; margin:6px 0;">bar chart re-renders on toggle</div>
+              <div style="border-top:1px solid #ccc; padding-top:4px;">Query playground below (text box + cited answer)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p style="font-size:12px;">Best effort-to-impact ratio; reads "research tool" rather than "product".</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>CLI + self-contained HTML report</h3>
+      <p>No server at all — a CLI runs the ablation matrix and emits a polished static HTML report (charts, per-query traces) you can commit to the repo, like faithfulnessbench does. Zero deploy, perfect reproducibility, but no live "type a query" moment.</p>
+      <div class="mockup">
+        <div class="mockup-header">Terminal + committed report</div>
+        <div class="mockup-body">
+          <div style="background:#1e1e1e; color:#9fe09f; font-family:monospace; font-size:11px; padding:10px; border-radius:6px;">
+            $ ragreceipts eval --corpus musique --ablate all<br>
+            ▸ 12 configurations × 300 queries … done (18m)<br>
+            ▸ reranker: +13.1pp Recall@5 (paper: +12.1pp ✓)<br>
+            ▸ report → report/receipts.html
+          </div>
+          <div class="placeholder" style="min-height:40px; margin-top:8px; font-size:11px;">receipts.html — charts + trace viewer, openable from the repo</div>
+        </div>
+      </div>
+      <p style="font-size:12px;">Cheapest, most rigorous-feeling; weakest wow-factor for non-technical viewers.</p>
+    </div>
+  </div>
+</div>
