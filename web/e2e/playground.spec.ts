@@ -26,3 +26,12 @@ test("degraded retrieval shows a visible badge, never silent", async ({ page }) 
   await expect(page.getByTestId("degraded-flag")).toHaveText("rerank-skipped");
   await expect(page.getByTestId("degraded-badge").first()).toBeVisible();
 });
+
+test("graph-routed query shows the Graph route badge", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("query-input").fill("graph: who is the spouse of the founder of company X?");
+  await page.getByTestId("run-query").click();
+  await expect(page.getByTestId("route-badge")).toHaveText("Graph");
+  const nodes = page.getByTestId("trace-event");
+  await expect(nodes.filter({ hasText: "graph_retrieve" }).first()).toBeVisible();
+});

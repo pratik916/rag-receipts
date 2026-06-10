@@ -9,7 +9,7 @@ type QueryResponse = components["schemas"]["QueryResponse"];
 type TraceEvent = components["schemas"]["TraceEventModel"];
 
 // Preset ladder is fixed by contract (api/ragreceipts/config.py PRESETS).
-const PRESETS = ["bm25-only", "dense-rrf", "contextual", "rerank", "router-on"];
+const PRESETS = ["bm25-only", "dense-rrf", "contextual", "rerank", "graph", "graph-rrf", "router-on"];
 
 export default function Playground() {
   const [corpora, setCorpora] = useState<string[]>([]);
@@ -100,10 +100,20 @@ export default function Playground() {
         <>
           <div className="row">
             <span
-              className={result.route === "s1" ? "badge badge-s1" : "badge badge-s2"}
+              className={
+                result.route === "s1"
+                  ? "badge badge-s1"
+                  : result.route === "graph"
+                    ? "badge badge-graph"
+                    : "badge badge-s2"
+              }
               data-testid="route-badge"
             >
-              {result.route === "s1" ? "System-1" : "System-2"}
+              {result.route === "s1"
+                ? "System-1"
+                : result.route === "graph"
+                  ? "Graph"
+                  : "System-2"}
             </span>
             {result.degraded.map((d) => (
               <span key={d} className="badge badge-degraded" data-testid="degraded-flag">

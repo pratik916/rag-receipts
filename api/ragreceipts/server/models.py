@@ -69,7 +69,7 @@ class CitationModel(BaseModel):
 class QueryResponse(BaseModel):
     answer: str
     abstained: bool
-    route: Literal["s1", "s2"]
+    route: Literal["s1", "s2", "graph"]
     degraded: list[str]  # e.g. ["rerank-skipped"] — degrade visibly, never silently
     citations: list[CitationModel]
     trace_id: str

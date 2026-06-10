@@ -20,6 +20,21 @@ test("ablation lab renders committed receipts, charts, and verbatim anchor notes
   await expect(page.getByTestId("cross-index-note").first()).toContainText("contextual");
 });
 
+test("ablation lab renders graph cells, recognition chip, anchor, and latency disclosure", async ({ page }) => {
+  await page.goto("/ablation");
+  // graph + graph-rrf cells render (committed or local)
+  await expect(page.getByTestId("receipt-row").filter({ hasText: "graph" }).first()).toBeVisible();
+  // recognition mini-ablation chip on a graph cell
+  await expect(page.getByTestId("graph-recognition-chip").first()).toContainText("recognition:");
+  // the two-sided anchor note is rendered VERBATIM — note the real F1 casing ("NOT")
+  await expect(
+    page.getByTestId("anchor-note").filter({ hasText: "Graphs are NOT" }).first()
+  ).toContainText("NOT expected to help simple-fact");
+  // latency disclosure section is present with a per-cell p50/p95 row
+  await expect(page.getByTestId("graph-latency-disclosure")).toBeVisible();
+  await expect(page.getByTestId("graph-latency-row").first()).toContainText("p95");
+});
+
 test("committed/local toggle filters sources", async ({ page }) => {
   await page.goto("/ablation");
   await expect(page.getByTestId("receipt-row").filter({ hasText: "local" }).first()).toBeVisible();

@@ -106,6 +106,10 @@ class FixtureQueryRunner:
 
     def run(self, *, query: str, corpus_id: str, preset: str) -> QueryResult:
         trace_id = uuid.uuid4().hex
+        # A "graph:"-prefixed query routes to the graph plane (mirrors the
+        # "degrade:" convention) so the Playground can assert the Graph badge +
+        # the graph_retrieve trace node hermetically.
+        route = "graph" if query.lower().startswith("graph:") else "s1"
         t0 = time.perf_counter()
         parsed = self._transport.parse(
             model=ROUTER_MODEL,
@@ -123,7 +127,7 @@ class FixtureQueryRunner:
                 payload={
                     "complexity": decision.complexity,
                     "confidence": decision.confidence,
-                    "route": "s1",
+                    "route": route,
                 },
                 model=ROUTER_MODEL,
                 input_tokens=parsed.input_tokens,
@@ -143,7 +147,7 @@ class FixtureQueryRunner:
             TraceEvent(
                 trace_id=trace_id,
                 seq=1,
-                node="s1_retrieve",
+                node="graph_retrieve" if route == "graph" else "s1_retrieve",
                 payload={
                     "k": 5,
                     "degraded": degraded,
@@ -196,7 +200,7 @@ class FixtureQueryRunner:
         return QueryResult(
             answer=completion.text,
             abstained=False,
-            route="s1",
+            route=route,
             degraded=degraded,
             citations=citations,
             trace_id=trace_id,
@@ -208,6 +212,8 @@ _PRESET_RECALL = {
     "dense-rrf": 0.63,
     "contextual": 0.66,
     "rerank": 0.78,
+    "graph": 0.83,  # multi-hop lift on the fixture (the graph receipt's good side)
+    "graph-rrf": 0.81,
     "router-on": 0.80,
 }
 # Per-preset index hashes mirror the contracts: IngestConfig.contextual selects the
@@ -219,17 +225,46 @@ _PRESET_INDEX_HASHES = {
     "dense-rrf": {"dense_isolated": "sha256:fixture-iso", "sparse": "sha256:fixture-sparse"},
     "contextual": {"dense_contextual": "sha256:fixture-ctx", "sparse": "sha256:fixture-sparse"},
     "rerank": {"dense_contextual": "sha256:fixture-ctx", "sparse": "sha256:fixture-sparse"},
+    "graph": {"graph": "sha256:fixture-graph"},
+    "graph-rrf": {
+        "dense_contextual": "sha256:fixture-ctx",
+        "sparse": "sha256:fixture-sparse",
+        "graph": "sha256:fixture-graph",
+    },
     "router-on": {"dense_contextual": "sha256:fixture-ctx", "sparse": "sha256:fixture-sparse"},
 }
 
 
 def _fixture_receipt(preset: str, run_id: str) -> dict:
+    # RG9: the two-sided graph anchor note must match the real F1 anchor VERBATIM —
+    # import the single source of truth rather than hand-copying its casing.
+    from ragreceipts.eval.receipts import GRAPH_ANCHOR_NOTE
+
     r5 = _PRESET_RECALL.get(preset, 0.6)
+    is_graph = preset in ("graph", "graph-rrf")
+    config: dict = {"name": preset}
+    anchors: list = []
+    if is_graph:
+        config["query"] = {
+            "graph": True,
+            "graph_recognition": "llm",
+            "route_mode": "force_s1",
+        }
+        delta = round(r5 - _PRESET_RECALL["rerank"], 4)
+        anchors = [
+            {
+                "source": "HippoRAG 2 (arXiv 2502.14802)",
+                "published_value": 0.07,
+                "measured_value": delta,
+                "direction_match": delta > 0,
+                "note": GRAPH_ANCHOR_NOTE,
+            }
+        ]
     return {
         "run_id": run_id,
         "corpus_id": FIXTURE_CORPUS_ID,
         "preset": preset,
-        "config": {"name": preset},
+        "config": config,
         "index_hashes": _PRESET_INDEX_HASHES.get(preset, {"sparse": "sha256:fixture-sparse"}),
         "models": {
             "router": "claude-haiku-4-5-20251001",
@@ -250,8 +285,10 @@ def _fixture_receipt(preset: str, run_id: str) -> dict:
             "f1": 0.46,
             "ragas_faithfulness": 0.79,
             "ragas_answer_relevancy": 0.74,
-            "latency_p50_ms": 820,
-            "latency_p95_ms": 1900,
+            # The graph cells visibly cost more latency, measured in the receipt —
+            # the "latency disclosure" assertion is concrete, never claimed.
+            "latency_p50_ms": 1900 if is_graph else 820,
+            "latency_p95_ms": 4200 if is_graph else 1900,
             "usd_per_query": 0.011,
         },
         # R11: per_query rows use the committed schema exactly —
@@ -265,7 +302,7 @@ def _fixture_receipt(preset: str, run_id: str) -> dict:
                 "flags": {},
             }
         ],
-        "anchors": [],
+        "anchors": anchors,
     }
 
 
@@ -349,6 +386,15 @@ def build_testing_deps() -> AppDeps:
     FixtureEvalRunner(paths).run(
         corpus_id=FIXTURE_CORPUS_ID,
         preset="dense-rrf",
+        slice_name="smoke",
+        spend_cap_usd=1.0,
+        emit=lambda message, progress: None,
+    )
+    # Seed a local graph run so the lab has a graph cell (recognition chip + the
+    # two-sided anchor + measured latency premium) under the local toggle.
+    FixtureEvalRunner(paths).run(
+        corpus_id=FIXTURE_CORPUS_ID,
+        preset="graph",
         slice_name="smoke",
         spend_cap_usd=1.0,
         emit=lambda message, progress: None,

@@ -37,6 +37,7 @@ code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-
 }
 .badge-s1 { border-color: var(--ok); color: var(--ok); }
 .badge-s2 { border-color: var(--accent); color: var(--accent); }
+.badge-graph { border-color: var(--accent); color: var(--accent); }
 .badge-degraded { border-color: var(--warn); color: var(--warn); }
 .badge-ok { border-color: var(--ok); color: var(--ok); }
 button, select, input[type="text"] {

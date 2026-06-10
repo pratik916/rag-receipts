@@ -31,6 +31,7 @@ type ReceiptBody = {
   index_hashes?: Record<string, string>;
   metrics?: Record<string, number>;
   anchors?: Anchor[];
+  config?: { query?: { graph_recognition?: string } };
 };
 
 const METRICS = [
@@ -43,7 +44,15 @@ const METRICS = [
   "usd_per_query",
 ];
 // Ladder order is fixed by contract (api/ragreceipts/config.py PRESETS).
-const PRESET_ORDER = ["bm25-only", "dense-rrf", "contextual", "rerank", "router-on"];
+const PRESET_ORDER = [
+  "bm25-only",
+  "dense-rrf",
+  "contextual",
+  "rerank",
+  "graph",
+  "graph-rrf",
+  "router-on",
+];
 
 export default function AblationLab() {
   const [receipts, setReceipts] = useState<ReceiptEntry[]>([]);
@@ -174,6 +183,18 @@ export default function AblationLab() {
                       </span>
                     )}
                   </td>
+                  <td>
+                    {(body.preset === "graph" || body.preset === "graph-rrf") &&
+                      body.config?.query?.graph_recognition && (
+                        <span
+                          className="badge badge-graph"
+                          data-testid="graph-recognition-chip"
+                          title="Graph recognition memory mode (llm | embedding) — the recognition mini-ablation cell"
+                        >
+                          recognition: {body.config.query.graph_recognition}
+                        </span>
+                      )}
+                  </td>
                 </tr>
               );
             })}
@@ -208,6 +229,43 @@ export default function AblationLab() {
           </section>
         );
       })}
+
+      {visible.some((r) => {
+        const b = r.receipt as ReceiptBody;
+        return b.preset === "graph" || b.preset === "graph-rrf";
+      }) && (
+        <section className="card" data-testid="graph-latency-disclosure">
+          <h2 style={{ marginTop: 0 }}>Graph latency (measured, not claimed)</h2>
+          <p className="muted">
+            The graph plane&apos;s overhead shows up in the receipt&apos;s
+            latency_p50_ms / latency_p95_ms — these are measured per run, never asserted.
+            HippoRAG-2-style retrieval adds an OpenIE-built graph + query-seeded PPR, so
+            its cells cost more latency than the rerank baseline; that cost is the price of
+            the multi-hop recall lift, disclosed here cell by cell.
+          </p>
+          <table className="chunks">
+            <tbody>
+              {visible
+                .filter((r) => {
+                  const b = r.receipt as ReceiptBody;
+                  return b.preset === "graph" || b.preset === "graph-rrf";
+                })
+                .map((r) => {
+                  const b = r.receipt as ReceiptBody;
+                  return (
+                    <tr key={r.path} data-testid="graph-latency-row">
+                      <td>{b.preset}</td>
+                      <td className="muted">
+                        p50 {b.metrics?.latency_p50_ms ?? "—"}ms · p95{" "}
+                        {b.metrics?.latency_p95_ms ?? "—"}ms
+                      </td>
+                    </tr>
+                  );
+                })}
+            </tbody>
+          </table>
+        </section>
+      )}
 
       {anchorRows.length > 0 && (
         <section className="card">

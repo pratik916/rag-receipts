@@ -339,7 +339,7 @@ export interface components {
              * Route
              * @enum {string}
              */
-            route: "s1" | "s2";
+            route: "s1" | "s2" | "graph";
             /** Degraded */
             degraded: string[];
             /** Citations */
