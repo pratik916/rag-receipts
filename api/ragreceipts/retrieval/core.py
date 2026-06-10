@@ -27,20 +27,24 @@ class RetrievalCore:
         dense: Retriever | None,
         sparse: Retriever | None,
         rerank_stage: RerankStage | None,
+        graph: Retriever | None = None,
         on_trace: TraceCallback | None = None,
     ):
         query = config.query
-        if not query.bm25 and not query.dense:
-            raise ValueError("config must enable at least one of bm25/dense")
+        if not (query.bm25 or query.dense or query.graph):
+            raise ValueError("config must enable at least one of bm25/dense/graph")
         if query.bm25 and sparse is None:
             raise ValueError("config enables bm25 but no sparse retriever was provided")
         if query.dense and dense is None:
             raise ValueError("config enables dense but no dense retriever was provided")
+        if query.graph and graph is None:
+            raise ValueError("config enables graph but no graph retriever was provided")
         if query.rerank and rerank_stage is None:
             raise ValueError("config enables rerank but no rerank stage was provided")
         self._config = config
         self._dense = dense
         self._sparse = sparse
+        self._graph = graph
         self._rerank_stage = rerank_stage
         self._on_trace = on_trace
 
@@ -61,14 +65,30 @@ class RetrievalCore:
             retrievers.append(self._sparse)
         if q.dense:
             retrievers.append(self._dense)
+        if q.graph:
+            retrievers.append(self._graph)
 
         try:
             candidates = self._fused_search(retrievers, query, q.top_k_fuse)
         except VendorUnavailable:
-            if not q.bm25:
-                raise  # nothing to fall back to: fail visibly
-            degraded.append("dense-skipped")
-            candidates = self._sparse.search(query, q.top_k_fuse)
+            # Drop the most-likely-unavailable retriever (graph), then dense, mirroring
+            # the visible-degrade contract; raise only when nothing survives.
+            survivors = list(retrievers)
+            if q.graph and self._graph in survivors and len(survivors) > 1:
+                survivors.remove(self._graph)
+                degraded.append("graph-skipped")
+                try:
+                    candidates = self._fused_search(survivors, query, q.top_k_fuse)
+                except VendorUnavailable:
+                    if not q.bm25:
+                        raise
+                    degraded.append("dense-skipped")
+                    candidates = self._sparse.search(query, q.top_k_fuse)
+            elif not q.bm25:
+                raise  # graph-only or dense-only: nothing to fall back to
+            else:
+                degraded.append("dense-skipped")
+                candidates = self._sparse.search(query, q.top_k_fuse)
 
         if q.rerank:
             try:
@@ -128,6 +148,8 @@ class RetrievalCore:
                         "bm25": q.bm25,
                         "dense": q.dense,
                         "rerank": q.rerank,
+                        "graph": q.graph,
+                        "graph_recognition": q.graph_recognition,
                         "route_mode": q.route_mode.value,
                         "top_k_fuse": q.top_k_fuse,
                         "top_k_final": q.top_k_final,

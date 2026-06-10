@@ -181,3 +181,114 @@ def test_trace_id_generated_when_absent(stack):
     make_core(stack, qc(), on_trace=events.append).retrieve(QUERY)
     assert events[0].node == "s1_retrieve"
     assert len(events[0].trace_id) == 32  # uuid4().hex
+
+
+# --- Plan E: graph-mode wiring -------------------------------------------------
+
+from ragreceipts.retrieval.graph import GraphRetriever  # noqa: E402
+from tests.graph_fixtures import FIXTURE_CHUNKS, build_fixture_graph  # noqa: E402
+
+
+class _AlwaysFailGraph:
+    """A Retriever that always raises VendorUnavailable (graph artifact missing)."""
+
+    def search(self, query: str, k: int):
+        raise VendorUnavailable("graph down")
+
+
+def _graph_retriever(recognition="embedding", embed=None):
+    return GraphRetriever(
+        build_fixture_graph().index,
+        chunks=FIXTURE_CHUNKS,
+        embed=embed or FakeEmbed(),
+        recognition=recognition,
+    )
+
+
+def _graph_core(query: QueryConfig, *, graph=None, dense=None, sparse=None, on_trace=None):
+    config = PipelineConfig(name="g", ingest=IngestConfig(contextual=False), query=query)
+    return RetrievalCore(
+        config,
+        dense,
+        sparse,
+        rerank_stage=None,
+        graph=graph,
+        on_trace=on_trace,
+    )
+
+
+def gqc(**overrides) -> QueryConfig:
+    base = dict(
+        bm25=False,
+        dense=False,
+        rerank=False,
+        graph=True,
+        route_mode=RouteMode.FORCE_S1,
+        top_k_fuse=4,
+        top_k_final=4,
+    )
+    base.update(overrides)
+    return QueryConfig(**base)
+
+
+def test_graph_only_passthrough_keeps_source(stack):
+    core = _graph_core(gqc(), graph=_graph_retriever())
+    results = core.retrieve("Eiffel Tower Paris")
+    assert results
+    assert all(r.source == "graph" for r in results)
+
+
+def test_graph_enabled_without_retriever_raises(stack):
+    with pytest.raises(ValueError):
+        _graph_core(gqc(), graph=None)
+
+
+def test_at_least_one_retriever_guard_allows_graph_only(stack):
+    # bm25=dense=False but graph=True must be valid (widened guard).
+    core = _graph_core(gqc(), graph=_graph_retriever())
+    assert core.retrieve("Paris")  # no ValueError
+
+
+def test_graph_rrf_fuses_sparse_dense_graph(stack):
+    core = _graph_core(
+        gqc(bm25=True, dense=True),
+        graph=_graph_retriever(),
+        dense=stack["dense"],
+        sparse=stack["sparse"],
+    )
+    results = core.retrieve(QUERY)
+    assert results
+    assert all(r.source == "rrf" for r in results)  # ≥2 lists -> RRF fusion
+
+
+def test_graph_skipped_degrades_when_fallback_exists(stack):
+    events: list[TraceEvent] = []
+    core = _graph_core(
+        gqc(bm25=True, dense=True),
+        graph=_AlwaysFailGraph(),
+        dense=stack["dense"],
+        sparse=stack["sparse"],
+        on_trace=events.append,
+    )
+    results = core.retrieve(QUERY)
+    assert results
+    assert "graph-skipped" in events[0].payload["degraded"]
+    assert all(r.source == "rrf" for r in results)  # fused over the surviving sparse+dense
+
+
+def test_graph_only_failure_raises(stack):
+    core = _graph_core(gqc(), graph=_AlwaysFailGraph())
+    with pytest.raises(VendorUnavailable):
+        core.retrieve(QUERY)  # no bm25/dense to fall back to
+
+
+def test_graph_run_trace_pins_graph_config(stack):
+    # RG7: the emitted trace event's config payload pins graph + graph_recognition
+    # straight from the QueryConfig (the spec's thesis: receipts pin the config).
+    events: list[TraceEvent] = []
+    query = gqc(graph_recognition="embedding")
+    core = _graph_core(query, graph=_graph_retriever(), on_trace=events.append)
+    core.retrieve("Eiffel Tower Paris")
+    config = events[0].payload["config"]
+    assert config["graph"] is True
+    assert config["graph_recognition"] == query.graph_recognition == "embedding"
