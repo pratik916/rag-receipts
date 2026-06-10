@@ -1,11 +1,11 @@
 """Ablation runner: preset ladder x corpus slice -> one Receipt per runnable cell.
 
 Degrade visibly, never silently:
-- presets with route_mode != FORCE_S1 face TWO INDEPENDENT gates (R10):
-  GATE 1 (PERMANENT): router-on runs on multi-hop corpora only
-  (MULTI_HOP_DATASETS); Plan C keeps and tests this gate.
-  GATE 2 (TEMPORARY): System-2 does not exist until Plan C; Plan C deletes
-  only this skip. Both produce a disclosed SkippedCell, never a fake run.
+- presets with route_mode != FORCE_S1 face the PERMANENT MULTI_HOP_DATASETS
+  gate (R10): router-on runs on multi-hop corpora only, producing a disclosed
+  SkippedCell on a single-hop corpus rather than a fake run. (Plan C deleted
+  the temporary "requires Plan C" skip; generation now drives the agent graph
+  via agents.service.run_query, so System-2 cells run live.)
 - per-query failures -> status 'failed', excluded from metrics, counted in
   n_failed; abstentions -> 'abstained', excluded from RAGAS, counted in
   n_abstained; both visible in per_query flags.
@@ -30,14 +30,15 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from pydantic import BaseModel
-
+from ragreceipts.agents.prompts import PROMPTS_VERSION
+from ragreceipts.agents.service import run_query
 from ragreceipts.config import PRESETS, PipelineConfig
 from ragreceipts.constants import (
     EMBED_MODEL,
     JUDGE_MODEL,
     RERANK_MODEL,
     ROUTER_MODEL,
+    S2_MAX_HOPS,
     SYNTH_MODEL,
 )
 from ragreceipts.eval.metrics import exact_match, f1, mrr_at_k, recall_at_k
@@ -59,7 +60,8 @@ from ragreceipts.eval.receipts import (
 )
 from ragreceipts.eval.run_state import RunStore
 from ragreceipts.retrieval.core import RetrievalCore
-from ragreceipts.types import Chunk, RouteMode, ScoredChunk
+from ragreceipts.traces.store import TraceStore
+from ragreceipts.types import Chunk, RouteMode
 from ragreceipts.vendors.base import ClaudeTransport
 
 # PERMANENT gate data (R10): router-on cells run on multi-hop corpora only.
@@ -75,17 +77,11 @@ EST_QUERY_EMBED_TOKENS = 40
 EST_RAGAS_INPUT_TOKENS = 4_000
 EST_RAGAS_OUTPUT_TOKENS = 500
 
-S1_SYSTEM = (
-    "You answer questions strictly from the numbered passages provided. "
-    "Cite supporting passages inline as [n]. If the passages do not contain "
-    "the information needed, set abstained=true and say so briefly in answer. "
-    "Never use outside knowledge and never invent facts."
-)
-
-
-class S1Answer(BaseModel):
-    answer: str
-    abstained: bool
+# System-2 estimate inputs (R10): route + decompose + one grade per hop, all on
+# Haiku; synthesis is the Sonnet base already counted below.
+EST_S2_HAIKU_CALLS = 2 + S2_MAX_HOPS  # route + decompose + S2_MAX_HOPS grades
+EST_S2_HAIKU_INPUT_TOKENS = 1_200  # ~5 chunks x 200 tokens + prompt
+EST_S2_HAIKU_OUTPUT_TOKENS = 100
 
 
 @dataclass(frozen=True)
@@ -103,50 +99,31 @@ def new_run_id(corpus_id: str, slice_name: str) -> str:
     return f"{corpus_id}-{slice_name}-{stamp}-{uuid.uuid4().hex[:6]}"
 
 
-def synthesize(
-    claude: ClaudeTransport, query: str, chunks: list[ScoredChunk]
-) -> tuple[S1Answer, int, int]:
-    """Plan B's temporary S1 generation path (synthesize-with-citations).
-
-    Plan C replaces THIS call site with the LangGraph s1_answer node; the
-    prompt and the structured abstention field stay.
-    """
-    numbered = "\n\n".join(f"[{i}] {sc.chunk.text}" for i, sc in enumerate(chunks, start=1))
-    result = claude.parse(
-        model=SYNTH_MODEL,
-        system=S1_SYSTEM,
-        user=f"Passages:\n{numbered}\n\nQuestion: {query}",
-        max_tokens=4096,
-        output_format=S1Answer,
-        temperature=0.0,
-    )
-    parsed = result.parsed
-    if not isinstance(parsed, S1Answer):
-        raise TypeError(f"expected S1Answer from ClaudeTransport.parse, got {type(parsed)!r}")
-    return parsed, result.input_tokens, result.output_tokens
-
-
 def estimate_run_cost(preset_names: list[str], n_queries: int, *, ragas: bool = False) -> float:
     """Pre-run cost estimate (spec: estimate + confirmation gate + hard cap).
 
-    ragas=True adds a per-ok-query judge heuristic (assumes every query is
-    'ok' - conservative). The HARD CAP still meters only tracked spend:
-    actual RAGAS judge usage is untracked in Plan B (disclosed in the runbook
-    and via the ragas_judge_usd_untracked flag).
+    AUTO presets are priced as a System-2 upper bound (R10): every query
+    escalates and spends all S2_MAX_HOPS hops. ragas=True keeps Plan B's
+    per-ok-query judge heuristic (conservative; the HARD CAP still meters
+    only tracked spend — RAGAS judge usage stays untracked and disclosed).
     """
     total = 0.0
     for name in preset_names:
         cfg = PRESETS[name]
-        if cfg.query.route_mode is not RouteMode.FORCE_S1:
-            # TEMPORARY (R10): AUTO presets are skipped in Plan B -> no cost.
-            # After Plan C this becomes a System-2 estimate (hops x haiku
-            # route/grade + sonnet synthesis) instead of a skip.
-            continue
         per_q = usd_for_tokens(SYNTH_MODEL, EST_SYNTH_INPUT_TOKENS, EST_SYNTH_OUTPUT_TOKENS)
         if cfg.query.dense:
             per_q += usd_for_tokens(EMBED_MODEL, EST_QUERY_EMBED_TOKENS, 0)
         if cfg.query.rerank:
             per_q += usd_for_rerank(1)
+        if cfg.query.route_mode is not RouteMode.FORCE_S1:
+            per_q += EST_S2_HAIKU_CALLS * usd_for_tokens(
+                ROUTER_MODEL, EST_S2_HAIKU_INPUT_TOKENS, EST_S2_HAIKU_OUTPUT_TOKENS
+            )
+            extra_hops = S2_MAX_HOPS - 1  # the first hop's retrieval is the base
+            if cfg.query.dense:
+                per_q += extra_hops * usd_for_tokens(EMBED_MODEL, EST_QUERY_EMBED_TOKENS, 0)
+            if cfg.query.rerank:
+                per_q += extra_hops * usd_for_rerank(1)
         if ragas:
             per_q += usd_for_tokens(JUDGE_MODEL, EST_RAGAS_INPUT_TOKENS, EST_RAGAS_OUTPUT_TOKENS)
         total += per_q * n_queries
@@ -209,6 +186,7 @@ class AblationRunner:
         data_dir: Path,
         ragas: RagasJudge | None = None,
         clock: Callable[[], float] = time.perf_counter,
+        trace_store: TraceStore | None = None,
     ) -> None:
         self._core_factory = core_factory
         self._claude = claude
@@ -216,6 +194,9 @@ class AblationRunner:
         self._data_dir = data_dir
         self._ragas = ragas
         self._clock = clock
+        # Default resolves next to the corpora dirs (the same data_dir the
+        # runner already uses); tests pass a tmp_path-backed store.
+        self._trace_store = trace_store or TraceStore(data_dir / "traces-eval.sqlite3")
 
     def run(
         self,
@@ -244,8 +225,8 @@ class AblationRunner:
         for name in presets:
             cfg = PRESETS[name]
             if cfg.query.route_mode is not RouteMode.FORCE_S1:
-                # GATE 1 - PERMANENT (R10): router-on runs on multi-hop corpora
-                # only. Checked FIRST. Plan C keeps and tests this gate.
+                # R10: permanent gate — AUTO presets run on multi-hop corpora only.
+                # (The temporary "requires Plan C" skip that used to follow is gone.)
                 dataset = manifest.get("dataset", {}).get("name", "")
                 if dataset not in MULTI_HOP_DATASETS:
                     skipped.append(
@@ -258,19 +239,6 @@ class AblationRunner:
                         )
                     )
                     continue
-                # GATE 2 - TEMPORARY (R10): System-2 does not exist until
-                # Plan C. Plan C deletes ONLY this block; the multi-hop gate
-                # above stays.
-                skipped.append(
-                    SkippedCell(
-                        preset=name,
-                        reason=(
-                            "skipped: requires Plan C (LangGraph System-2 is not "
-                            "built yet; only route_mode=force_s1 cells are runnable)"
-                        ),
-                    )
-                )
-                continue
             self._run_preset(run_id=run_id, cfg=cfg, queries=queries, spend_cap_usd=spend_cap_usd)
             receipt = self._build_receipt(
                 run_id=run_id,
@@ -316,35 +284,50 @@ class AblationRunner:
                 )
             t0 = self._clock()
             try:
-                scored_chunks = core.retrieve(q.question)
-                parsed, tin, tout = synthesize(self._claude, q.question, scored_chunks)
+                result = run_query(
+                    query=q.question,
+                    core=core,
+                    claude=self._claude,
+                    store=self._trace_store,
+                    config=cfg,
+                )
                 latency_ms = (self._clock() - t0) * 1000.0
-                usd = usd_for_tokens(SYNTH_MODEL, tin, tout)
+                events = self._trace_store.get(result.trace_id)
+                tin = sum(e.input_tokens for e in events)
+                tout = sum(e.output_tokens for e in events)
+                # R10: actual per-query usd from traced (model, in, out) tokens.
+                usd = sum(
+                    usd_for_tokens(e.model, e.input_tokens, e.output_tokens)
+                    for e in events
+                    if e.model is not None
+                )
+                n_retrievals = result.hops_used if result.system == "s2" else 1
                 if cfg.query.rerank:
-                    usd += usd_for_rerank(1)
+                    usd += usd_for_rerank(n_retrievals)
                 if cfg.query.dense:
-                    usd += usd_for_tokens(EMBED_MODEL, EST_QUERY_EMBED_TOKENS, 0)
+                    usd += usd_for_tokens(EMBED_MODEL, n_retrievals * EST_QUERY_EMBED_TOKENS, 0)
                 self._store.record_result(
                     run_id=run_id,
                     preset=cfg.name,
                     query_id=q.query_id,
-                    status="abstained" if parsed.abstained else "ok",
+                    status="abstained" if result.final.abstained else "ok",
                     retrieved=[
                         {
                             "chunk_id": sc.chunk.chunk_id,
                             "passage_id": sc.chunk.passage_id,
-                            "start_token": sc.chunk.start_token,
-                            "end_token": sc.chunk.end_token,
+                            "start_token": sc.chunk.start_token,  # R3: span-gold
+                            "end_token": sc.chunk.end_token,  # hits stay computable
                             "text": sc.chunk.text,
                         }
-                        for sc in scored_chunks
+                        for sc in result.retrieved
                     ],
-                    answer=parsed.answer,
+                    answer=result.final.text,
                     latency_ms=latency_ms,
                     usd=usd,
                     input_tokens=tin,
                     output_tokens=tout,
                     error=None,
+                    route=result.system,
                 )
             except Exception as exc:  # disclosed, never batch-fatal
                 latency_ms = (self._clock() - t0) * 1000.0
@@ -360,6 +343,7 @@ class AblationRunner:
                     input_tokens=0,
                     output_tokens=0,
                     error=repr(exc),
+                    route=None,
                 )
 
     def _build_receipt(
@@ -421,6 +405,19 @@ class AblationRunner:
             "usd_per_query": (sum(r["usd"] for r in scored) / len(scored) if scored else None),
         }
 
+        n_s1 = sum(1 for r in rows if r.get("route") == "s1")
+        n_s2 = sum(1 for r in rows if r.get("route") == "s2")
+        metrics["n_s1"] = n_s1
+        metrics["n_s2"] = n_s2
+        if n_s2 > 0:
+            # Contract: router-on retrieval recall is a secondary diagnostic over
+            # the union of per-hop top-5, flagged union_of_hops; primary metrics
+            # are EM/F1 + RAGAS.
+            metrics["union_of_hops"] = True
+            metrics["recall_union_of_hops"] = metrics["recall_at_5"]
+            metrics["recall_at_5"] = None
+            metrics["mrr_at_3"] = None
+
         anchors = []
         for spec in ANCHOR_SPECS.get(cfg.name, []):
             baseline = results_by_preset.get(spec.baseline_preset or "")
@@ -455,6 +452,7 @@ class AblationRunner:
                     "answer": r["answer"],
                     "latency_ms": r["latency_ms"],
                     "usd": r["usd"],
+                    "route": r.get("route"),
                     "flags": flags,
                 }
             )
@@ -473,7 +471,7 @@ class AblationRunner:
                 "embed": EMBED_MODEL,
             },
             pricing_table_version=PRICING_VERSION,
-            prompts_version="n/a",  # R11: Plan C populates agents.prompts.PROMPTS_VERSION
+            prompts_version=PROMPTS_VERSION,  # R11: was "n/a"
             n_total=len(rows),
             n_failed=len(failed),
             n_abstained=sum(1 for r in rows if r["status"] == "abstained"),

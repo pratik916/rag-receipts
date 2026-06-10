@@ -11,14 +11,16 @@ from pathlib import Path
 
 import pytest
 
+from ragreceipts.agents.prompts import PROMPTS_VERSION
+from ragreceipts.agents.schemas import FinalAnswer
 from ragreceipts.eval.ragas_adapter import RagasScores
 from ragreceipts.eval.run_state import RunStore
 from ragreceipts.eval.runner import (
     AblationRunner,
-    S1Answer,
     SpendCapExceeded,
     estimate_run_cost,
 )
+from ragreceipts.traces.store import TraceStore
 from ragreceipts.types import Chunk, ScoredChunk
 from ragreceipts.vendors.base import ParsedResult
 from tests.fakes import FakeRagas
@@ -27,18 +29,23 @@ from tests.fakes import FakeRagas
 
 
 class StubClaude:
-    """ClaudeTransport stub; answers keyed by the question text."""
+    """ClaudeTransport stub for the graph's S1 path; answers keyed by question.
 
-    def __init__(self, answers: dict[str, S1Answer]) -> None:
+    force_s1 presets enter the graph at s1_retrieve, so the only Claude call
+    per query is s1_answer: parse(output_format=FinalAnswer) with the
+    S1_ANSWER_USER prompt ('Question: {query}\n\nContext passages:\n{context}').
+    """
+
+    def __init__(self, answers: dict[str, FinalAnswer]) -> None:
         self._answers = answers
         self.parse_calls = 0
 
     def complete(self, *, model, system, user, max_tokens, temperature=0.0):
-        raise AssertionError("Plan B synthesis uses parse(), not complete()")
+        raise AssertionError("the S1 graph path uses parse(), not complete()")
 
     def parse(self, *, model, system, user, max_tokens, output_format, temperature=0.0):
         self.parse_calls += 1
-        question = user.rsplit("Question: ", 1)[1]
+        question = user.split("Question: ", 1)[1].split("\n", 1)[0]
         return ParsedResult(parsed=self._answers[question], input_tokens=1000, output_tokens=100)
 
 
@@ -122,8 +129,8 @@ def make_runner(
         "question 1?": [sc("y1"), sc("y2"), sc("y3")],  # gold p1 NOT retrieved
     }
     answers = {
-        "question 0?": S1Answer(answer="Answer 0 [1]", abstained=False),
-        "question 1?": S1Answer(answer="The passages do not contain this.", abstained=abstain_q1),
+        "question 0?": FinalAnswer(text="Answer 0 [1]", citations=[1]),
+        "question 1?": FinalAnswer(text="The passages do not contain this.", abstained=abstain_q1),
     }
     return AblationRunner(
         core_factory=lambda cfg: StubCore(results, fail_on=fail_on),
@@ -131,32 +138,16 @@ def make_runner(
         store=RunStore(tmp_path / "runs.db"),
         data_dir=data_dir,
         ragas=ragas,
+        trace_store=TraceStore(tmp_path / "traces.sqlite3"),
     )
 
 
-# ---------- the two router-on gates (R10: explicitly separate) ----------
-
-
-def test_router_on_skipped_requires_plan_c(tmp_path: Path) -> None:
-    # TEMPORARY gate: on a multi-hop corpus only the "requires Plan C" skip
-    # fires. Plan C deletes exactly this skip - and ONLY this one.
-    runner = make_runner(tmp_path, dataset="musique")
-    doc = runner.run(
-        run_id="r1",
-        corpus_id="c1",
-        slice_name="smoke",
-        presets=["bm25-only", "router-on"],
-        spend_cap_usd=5.0,
-    )
-    assert [e["receipt"]["preset"] for e in doc["receipts"]] == ["bm25-only"]
-    assert doc["skipped"][0]["preset"] == "router-on"
-    assert "requires Plan C" in doc["skipped"][0]["reason"]
+# ---------- the permanent router-on gate (R10) ----------
 
 
 def test_router_on_skipped_on_simple_corpus(tmp_path: Path) -> None:
-    # PERMANENT gate (MULTI_HOP_DATASETS): checked BEFORE the Plan C skip, so
-    # a single-hop corpus is refused for THIS reason even after Plan C lands.
-    # Plan C must keep and test this gate (R10).
+    # PERMANENT gate (MULTI_HOP_DATASETS): a single-hop corpus is refused for
+    # THIS reason even after Plan C lands. Plan C keeps and tests this gate (R10).
     runner = make_runner(tmp_path, dataset="nq")
     doc = runner.run(
         run_id="r1", corpus_id="c1", slice_name="smoke", presets=["router-on"], spend_cap_usd=5.0
@@ -174,8 +165,11 @@ def test_estimate_run_cost_hand_computed() -> None:
     assert estimate_run_cost(["bm25-only"], 10) == pytest.approx(0.144)
     # rerank/query: 0.0144 + embed 40 x 0.18/1e6 (=0.0000072) + 1 search unit 0.0025
     assert estimate_run_cost(["rerank"], 1) == pytest.approx(0.0169072)
-    # AUTO presets are skipped in Plan B -> zero estimated cost (temporary, R10)
-    assert estimate_run_cost(["router-on"], 100) == 0.0
+    # router-on/query (R10 S2 upper bound): rerank base 0.0169072
+    #   + 5 haiku calls x (1200 x $1/M + 100 x $5/M = 0.0017) = 0.0085
+    #   + 2 extra hops x (embed 0.0000072 + rerank 0.0025)    = 0.0050144
+    #   = 0.0304216
+    assert estimate_run_cost(["router-on"], 100) == pytest.approx(3.04216)
 
 
 def test_estimate_includes_ragas_judge_heuristic_when_enabled() -> None:
@@ -183,8 +177,9 @@ def test_estimate_includes_ragas_judge_heuristic_when_enabled() -> None:
     # sonnet 4000 in x $3/M + 500 out x $15/M = 0.012 + 0.0075 = 0.0195.
     # bm25-only/query 0.0144 + 0.0195 = 0.0339 -> x10 = 0.339
     assert estimate_run_cost(["bm25-only"], 10, ragas=True) == pytest.approx(0.339)
-    # AUTO presets still contribute zero even with ragas
-    assert estimate_run_cost(["router-on"], 100, ragas=True) == 0.0
+    # router-on with ragas: S2 upper bound 0.0304216 + judge 0.0195
+    #   = 0.0499216/query -> x100 = 4.99216
+    assert estimate_run_cost(["router-on"], 100, ragas=True) == pytest.approx(4.99216)
 
 
 # ---------- end-to-end receipt ----------
@@ -211,7 +206,7 @@ def test_receipt_metrics_and_fields(tmp_path: Path) -> None:
     assert receipt["n_abstained"] == 1
     assert receipt["n_failed"] == 0
     assert receipt["pricing_table_version"] == "2026-06-10"
-    assert receipt["prompts_version"] == "n/a"  # R11: Plan C populates this
+    assert receipt["prompts_version"] == PROMPTS_VERSION  # R11: populated by Plan C
     assert receipt["index_hashes"] == {"sparse": "sha256:s"}  # bm25-only: sparse only
     assert receipt["models"]["rerank"] == "rerank-v4.0-pro"
     assert receipt["config"]["query"]["route_mode"] == "force_s1"

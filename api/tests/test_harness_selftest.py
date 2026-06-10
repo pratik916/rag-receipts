@@ -11,10 +11,12 @@ from pathlib import Path
 
 import pytest
 
+from ragreceipts.agents.schemas import FinalAnswer, RouteDecision
 from ragreceipts.eval.run_state import RunStore
-from ragreceipts.eval.runner import AblationRunner, S1Answer
+from ragreceipts.eval.runner import AblationRunner
 from ragreceipts.retrieval.core import RetrievalCore
 from ragreceipts.retrieval.rerank import RerankStage
+from ragreceipts.traces.store import TraceStore
 from ragreceipts.vendors.base import ParsedResult
 from tests.fakes import FakeRerank  # tests/ is a package (R8)
 from tests.harness_fixtures import (
@@ -25,16 +27,23 @@ from tests.harness_fixtures import (
 
 
 class EchoClaude:
-    """ClaudeTransport stub answering each fixture question with its gold answer."""
+    """ClaudeTransport stub: routes everything 'simple', then answers each
+    fixture question with its gold answer (graph S1 path)."""
 
     def complete(self, *, model, system, user, max_tokens, temperature=0.0):
         raise AssertionError("self-test synthesis uses parse(), not complete()")
 
     def parse(self, *, model, system, user, max_tokens, output_format, temperature=0.0):
-        question = user.rsplit("Question: ", 1)[1]  # "harness question {i}?"
+        if output_format is RouteDecision:
+            return ParsedResult(
+                parsed=RouteDecision(route="simple", confidence=0.95),
+                input_tokens=50,
+                output_tokens=10,
+            )
+        question = user.split("Question: ", 1)[1].split("\n", 1)[0]
         i = question.split()[-1].rstrip("?")
         return ParsedResult(
-            parsed=S1Answer(answer=f"gold answer {i}", abstained=False),
+            parsed=FinalAnswer(text=f"gold answer {i}", citations=[1]),
             input_tokens=500,
             output_tokens=50,
         )
@@ -62,6 +71,7 @@ def make_runner(tmp_path: Path, *, misaligned: bool = False) -> AblationRunner:
         claude=EchoClaude(),
         store=RunStore(tmp_path / "runs.db"),
         data_dir=tmp_path,
+        trace_store=TraceStore(tmp_path / "traces.sqlite3"),
     )
 
 
@@ -96,7 +106,7 @@ def test_rerank_flip_provably_changes_recall_at_5(tmp_path: Path) -> None:
     assert all(a["direction_match"] is True for a in rerank_receipt["anchors"])
 
 
-def test_full_ladder_runs_offline_with_disclosed_skip(tmp_path: Path) -> None:
+def test_full_ladder_runs_offline_all_presets(tmp_path: Path) -> None:
     runner = make_runner(tmp_path)
     doc = runner.run(
         run_id="ladder",
@@ -110,16 +120,14 @@ def test_full_ladder_runs_offline_with_disclosed_skip(tmp_path: Path) -> None:
         "dense-rrf",
         "contextual",
         "rerank",
+        "router-on",
     ]
-    assert doc["skipped"] == [
-        {
-            "preset": "router-on",
-            "reason": (
-                "skipped: requires Plan C (LangGraph System-2 is not built "
-                "yet; only route_mode=force_s1 cells are runnable)"
-            ),
-        }
-    ]
+    assert doc["skipped"] == []  # musique fixture passes the R10 gate
+    m = metrics_for(doc, "router-on")
+    assert (m["n_s1"], m["n_s2"]) == (4, 0)
+    # no S2 query -> primary retrieval metrics keep their normal semantics
+    assert m["recall_at_5"] == pytest.approx(1.0)
+    assert "union_of_hops" not in m
     assert (tmp_path / "receipts-local" / "ladder.json").exists()
 
 

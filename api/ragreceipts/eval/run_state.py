@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS eval_results (
   input_tokens INTEGER NOT NULL,
   output_tokens INTEGER NOT NULL,
   error TEXT,
+  route TEXT,                        -- 's1' | 's2' | NULL (failed before routing)
   PRIMARY KEY (run_id, preset, query_id)
 );
 """
@@ -82,9 +83,10 @@ class RunStore:
         input_tokens: int,
         output_tokens: int,
         error: str | None,
+        route: str | None = None,
     ) -> None:
         self._conn.execute(
-            "INSERT OR REPLACE INTO eval_results VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO eval_results VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 run_id,
                 preset,
@@ -97,6 +99,7 @@ class RunStore:
                 input_tokens,
                 output_tokens,
                 error,
+                route,
             ),
         )
         self._conn.commit()
@@ -118,7 +121,7 @@ class RunStore:
     def results_for(self, run_id: str, preset: str) -> list[dict]:
         rows = self._conn.execute(
             "SELECT query_id, status, retrieved, answer, latency_ms, usd, "
-            "input_tokens, output_tokens, error "
+            "input_tokens, output_tokens, error, route "
             "FROM eval_results WHERE run_id = ? AND preset = ?",
             (run_id, preset),
         ).fetchall()
@@ -133,6 +136,7 @@ class RunStore:
                 "input_tokens": r[6],
                 "output_tokens": r[7],
                 "error": r[8],
+                "route": r[9],
             }
             for r in rows
         ]
