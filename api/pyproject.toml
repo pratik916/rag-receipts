@@ -8,6 +8,8 @@ dependencies = [
     "cohere>=7.0,<8",
     "datasets>=4.8.4,<5",
     "qdrant-client>=1.18,<2",
+    "ragas>=0.4,<0.5",
+    "sentence-transformers>=3.0",
     "voyageai>=0.4,<0.5",
 ]
 
