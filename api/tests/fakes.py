@@ -13,6 +13,7 @@ import hashlib
 import math
 
 from ragreceipts.eval.ragas_adapter import RagasScores
+from ragreceipts.traces.models import TraceEvent
 from ragreceipts.types import Chunk, ScoredChunk
 from ragreceipts.vendors.base import ClaudeResult, ParsedResult, VendorUnavailable
 
@@ -251,3 +252,65 @@ class FakeCore:
     def retrieve(self, query: str) -> list[ScoredChunk]:
         self.queries.append(query)
         return self.by_query.get(query, list(self.default))
+
+
+# --- Plan D: server-layer fakes ----------------------------------------------
+
+
+class InMemoryTraceStore:
+    """Duck-typed TraceStore (append/get per contracts §Traces) for server tests and
+    TESTING mode. Single-process only — which is exactly the single-worker constraint."""
+
+    def __init__(self) -> None:
+        self._events: dict[str, list[TraceEvent]] = {}
+
+    def append(self, event: TraceEvent) -> None:
+        self._events.setdefault(event.trace_id, []).append(event)
+
+    def get(self, trace_id: str) -> list[TraceEvent]:
+        return sorted(self._events.get(trace_id, []), key=lambda e: e.seq)
+
+
+class ScriptedTransport:
+    """ClaudeTransport fake with cycling scripts (never exhausts across e2e runs).
+
+    parse() validates the scripted payload into the *requested* output_format, so it
+    stays correct even though Plan C owns the route/grade Pydantic models.
+    """
+
+    def __init__(self, completions: list[str], parse_payloads: list[dict]) -> None:
+        self._completions = completions
+        self._parse_payloads = parse_payloads
+        self._c = 0
+        self._p = 0
+
+    def complete(
+        self,
+        *,
+        model: str,
+        system: str,
+        user: str,
+        max_tokens: int,
+        temperature: float = 0.0,
+    ) -> ClaudeResult:
+        text = self._completions[self._c % len(self._completions)]
+        self._c += 1
+        return ClaudeResult(text=text, input_tokens=120, output_tokens=40)
+
+    def parse(
+        self,
+        *,
+        model: str,
+        system: str,
+        user: str,
+        max_tokens: int,
+        output_format: type,
+        temperature: float = 0.0,
+    ) -> ParsedResult:
+        payload = self._parse_payloads[self._p % len(self._parse_payloads)]
+        self._p += 1
+        return ParsedResult(
+            parsed=output_format.model_validate(payload),
+            input_tokens=80,
+            output_tokens=20,
+        )
