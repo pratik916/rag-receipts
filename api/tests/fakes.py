@@ -12,6 +12,7 @@ lets ingest tests assert dense_contextual != dense_isolated.
 import hashlib
 import math
 
+from ragreceipts.eval.ragas_adapter import RagasScores
 from ragreceipts.vendors.base import ClaudeResult, ParsedResult, VendorUnavailable
 
 
@@ -175,3 +176,18 @@ class FakeClaude:
         if isinstance(payload, str):
             raise AssertionError("FakeClaude.parse expected a parsed-object script item, got str")
         return ParsedResult(parsed=payload, input_tokens=input_tokens, output_tokens=output_tokens)
+
+
+# --- Plan B: RAGAS judge fake -------------------------------------------------
+
+
+class FakeRagas:
+    """Scripted RagasJudge for CI: returns queued scores in call order."""
+
+    def __init__(self, scores: list[RagasScores]) -> None:
+        self._scores = list(scores)
+        self.calls: list[dict] = []
+
+    def score(self, *, question: str, answer: str, contexts: list[str]) -> RagasScores:
+        self.calls.append({"question": question, "answer": answer, "contexts": contexts})
+        return self._scores.pop(0)
