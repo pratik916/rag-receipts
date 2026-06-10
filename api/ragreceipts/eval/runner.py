@@ -200,6 +200,7 @@ class AblationRunner:
         ragas: RagasJudge | None = None,
         clock: Callable[[], float] = time.perf_counter,
         trace_store: TraceStore | None = None,
+        graph_factory: Callable[[PipelineConfig], object] | None = None,
     ) -> None:
         self._core_factory = core_factory
         self._claude = claude
@@ -210,6 +211,9 @@ class AblationRunner:
         # Default resolves next to the corpora dirs (the same data_dir the
         # runner already uses); tests pass a tmp_path-backed store.
         self._trace_store = trace_store or TraceStore(data_dir / "traces-eval.sqlite3")
+        # G4: when present AND the preset is AUTO on a multi-hop corpus, the graph
+        # route is reachable; the factory builds the GraphRetriever-backed core.
+        self._graph_factory = graph_factory
 
     def run(
         self,
@@ -318,12 +322,23 @@ class AblationRunner:
                 )
             t0 = self._clock()
             try:
+                # G4/RG6: inject the graph route's core only on AUTO presets when a
+                # factory is present. run() already gated AUTO presets to multi-hop
+                # corpora before reaching here, so reaching here under AUTO implies a
+                # multi-hop corpus; FORCE_S1 presets never route to graph.
+                graph_retriever = (
+                    self._graph_factory(cfg)
+                    if self._graph_factory is not None
+                    and cfg.query.route_mode is not RouteMode.FORCE_S1
+                    else None
+                )
                 result = run_query(
                     query=q.question,
                     core=core,
                     claude=self._claude,
                     store=self._trace_store,
                     config=cfg,
+                    graph_retriever=graph_retriever,
                 )
                 latency_ms = (self._clock() - t0) * 1000.0
                 events = self._trace_store.get(result.trace_id)
@@ -443,7 +458,25 @@ class AblationRunner:
         n_s2 = sum(1 for r in rows if r.get("route") == "s2")
         metrics["n_s1"] = n_s1
         metrics["n_s2"] = n_s2
-        if n_s2 > 0:
+
+        # G4: graph-route diagnostic — router-on only, reported SEPARATELY from the
+        # headline retrieval metrics (never conflated with "graph helps").
+        n_graph = sum(1 for r in rows if r.get("route") == "graph")
+        metrics["n_graph"] = n_graph
+        graph_rows = [r for r in scored if r.get("route") == "graph" and r["query_id"] in by_id]
+        metrics["n_graph_routed"] = len(graph_rows)
+        if graph_rows:
+            hits = 0
+            for r in graph_rows:
+                q = by_id[r["query_id"]]
+                chunks = [_chunk_from_stored(d, corpus_id) for d in r["retrieved"]]
+                if recall_at_k(chunks, q.golds, k=5) > 0:
+                    hits += 1
+            metrics["graph_route_precision"] = hits / len(graph_rows)
+        else:
+            metrics["graph_route_precision"] = None
+
+        if n_s2 > 0 or n_graph > 0:
             # Contract: router-on retrieval recall is a secondary diagnostic over
             # the union of per-hop top-5, flagged union_of_hops; primary metrics
             # are EM/F1 + RAGAS.
