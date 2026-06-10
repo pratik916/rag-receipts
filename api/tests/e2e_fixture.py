@@ -323,11 +323,15 @@ class TestingIngestSink:
             "dataset": {"name": "byo", "hf_id": None, "split": None, "revision": None},
             "chunking": {"chunk_size": 512, "chunk_overlap": 64},
             "embed_model": EMBED_MODEL,
-            "index_hashes": {"dense_contextual": "sha256:testing",
-                             "dense_isolated": "sha256:testing",
-                             "sparse": "sha256:testing"},
+            "index_hashes": {
+                "dense_contextual": "sha256:testing",
+                "dense_isolated": "sha256:testing",
+                "sparse": "sha256:testing",
+            },
             "tokenizer_artifact": "testing",
-            "n_docs": len(docs), "n_chunks": n_chunks, "n_queries": 0,
+            "n_docs": len(docs),
+            "n_chunks": n_chunks,
+            "n_queries": 0,
             "created_at": datetime.now(UTC).isoformat(),
         }
 
@@ -343,8 +347,11 @@ def build_testing_deps() -> AppDeps:
     trace_store = InMemoryTraceStore()
     # Seed a local run so the Ablation Lab committed/local toggle has both sources.
     FixtureEvalRunner(paths).run(
-        corpus_id=FIXTURE_CORPUS_ID, preset="dense-rrf", slice_name="smoke",
-        spend_cap_usd=1.0, emit=lambda message, progress: None,
+        corpus_id=FIXTURE_CORPUS_ID,
+        preset="dense-rrf",
+        slice_name="smoke",
+        spend_cap_usd=1.0,
+        emit=lambda message, progress: None,
     )
     return AppDeps(
         paths=paths,

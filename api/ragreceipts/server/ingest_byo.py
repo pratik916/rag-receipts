@@ -7,6 +7,7 @@ counts use a conservative 4-chars-per-token heuristic with a 100K limit, keeping
 token counts safely under the 120K window without a vendor tokenizer dependency.
 Per-document failures are collected, never batch-fatal.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -29,7 +30,7 @@ class LoadedDoc:
     text: str
     source_file: str
     split_index: int  # 0-based part number within the source document
-    n_splits: int     # total parts the source document became (1 = not split)
+    n_splits: int  # total parts the source document became (1 = not split)
 
 
 @dataclass(frozen=True)
@@ -43,8 +44,9 @@ class IngestSink(Protocol):
     (contracts §Corpus manifest). Implemented by the Plan A adapter (production) and
     TestingIngestSink (TESTING mode)."""
 
-    def write_corpus(self, *, corpus_id: str, docs: list[LoadedDoc],
-                     emit: Callable[[str, float], None]) -> dict: ...
+    def write_corpus(
+        self, *, corpus_id: str, docs: list[LoadedDoc], emit: Callable[[str, float], None]
+    ) -> dict: ...
 
 
 def read_file(path: Path) -> str:
@@ -74,8 +76,9 @@ def split_oversized(doc_id: str, text: str, *, source_file: str) -> list[LoadedD
     """Split at paragraph boundaries so no part exceeds DOC_TOKEN_LIMIT approx tokens."""
     limit_chars = DOC_TOKEN_LIMIT * APPROX_CHARS_PER_TOKEN
     if len(text) <= limit_chars:
-        return [LoadedDoc(doc_id=doc_id, text=text, source_file=source_file,
-                          split_index=0, n_splits=1)]
+        return [
+            LoadedDoc(doc_id=doc_id, text=text, source_file=source_file, split_index=0, n_splits=1)
+        ]
     paragraphs = text.split("\n\n")
     parts: list[str] = []
     current: list[str] = []
@@ -97,8 +100,13 @@ def split_oversized(doc_id: str, text: str, *, source_file: str) -> list[LoadedD
         parts.append("\n\n".join(current))
     n = len(parts)
     return [
-        LoadedDoc(doc_id=f"{doc_id}#part{i}", text=part, source_file=source_file,
-                  split_index=i, n_splits=n)
+        LoadedDoc(
+            doc_id=f"{doc_id}#part{i}",
+            text=part,
+            source_file=source_file,
+            split_index=i,
+            n_splits=n,
+        )
         for i, part in enumerate(parts)
     ]
 
@@ -138,7 +146,8 @@ def make_ingest_handler(sink: IngestSink, corpora_dir: Path):
             "source_files": sorted({d.source_file for d in docs}),
             "split_documents": [
                 {"doc_id": d.doc_id, "source_file": d.source_file, "n_splits": d.n_splits}
-                for d in docs if d.n_splits > 1
+                for d in docs
+                if d.n_splits > 1
             ],
             "failures": [{"file": f.file, "error": f.error} for f in failures],
         }
@@ -176,8 +185,9 @@ class RealIngestSink:
         self._embed = embed
         self._run_ingest = run_ingest_fn
 
-    def write_corpus(self, *, corpus_id: str, docs: list[LoadedDoc],
-                     emit: Callable[[str, float], None]) -> dict:
+    def write_corpus(
+        self, *, corpus_id: str, docs: list[LoadedDoc], emit: Callable[[str, float], None]
+    ) -> dict:
         import json
         from datetime import UTC, datetime
 
@@ -187,20 +197,40 @@ class RealIngestSink:
         raw_dir.mkdir(parents=True, exist_ok=True)
         with (raw_dir / "docs.jsonl").open("w", encoding="utf-8") as fh:
             for d in docs:
-                fh.write(json.dumps({
-                    "doc_id": d.doc_id, "passage_id": d.doc_id,
-                    "title": d.source_file, "text": d.text,
-                }) + "\n")
-        (raw_dir / "download_meta.json").write_text(json.dumps({
-            "corpus_id": corpus_id,
-            "dataset": {"name": "byo", "hf_id": None, "config": None,
-                        "split": None, "revision": None},
-            "created_at": datetime.now(UTC).isoformat(),
-        }, indent=2))
+                fh.write(
+                    json.dumps(
+                        {
+                            "doc_id": d.doc_id,
+                            "passage_id": d.doc_id,
+                            "title": d.source_file,
+                            "text": d.text,
+                        }
+                    )
+                    + "\n"
+                )
+        (raw_dir / "download_meta.json").write_text(
+            json.dumps(
+                {
+                    "corpus_id": corpus_id,
+                    "dataset": {
+                        "name": "byo",
+                        "hf_id": None,
+                        "config": None,
+                        "split": None,
+                        "revision": None,
+                    },
+                    "created_at": datetime.now(UTC).isoformat(),
+                },
+                indent=2,
+            )
+        )
         emit(f"raw layout written ({len(docs)} docs)", 0.45)
         manifest = self._run_ingest(
-            corpus_id=corpus_id, data_dir=self._data_dir,
-            ingest_config=IngestConfig(), embed=self._embed, qdrant=self._qdrant,
+            corpus_id=corpus_id,
+            data_dir=self._data_dir,
+            ingest_config=IngestConfig(),
+            embed=self._embed,
+            qdrant=self._qdrant,
         )
         emit("both dense vector sets + sparse index built", 0.85)
         return manifest

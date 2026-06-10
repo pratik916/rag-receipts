@@ -1,5 +1,6 @@
 """BYO ingest: reader dispatch, oversized-doc split, per-file failure collection,
 multipart endpoint + job."""
+
 import json
 import time
 
@@ -66,7 +67,9 @@ class RecordingSink:
             "embed_model": "voyage-context-3",
             "index_hashes": {"sparse": "sha256:test"},
             "tokenizer_artifact": "test",
-            "n_docs": len(docs), "n_chunks": len(docs), "n_queries": 0,
+            "n_docs": len(docs),
+            "n_chunks": len(docs),
+            "n_queries": 0,
             "created_at": "2026-06-10T00:00:00+00:00",
         }
 
@@ -100,9 +103,7 @@ def test_ingest_endpoint_runs_job_and_writes_manifest_with_disclosures(tmp_path)
         assert job["status"] == "succeeded"
         listed = client.get("/corpora").json()["corpora"]
         assert any(c["corpus_id"] == "my-docs" for c in listed)
-    manifest = json.loads(
-        (deps.paths.corpora_dir / "my-docs" / "manifest.json").read_text()
-    )
+    manifest = json.loads((deps.paths.corpora_dir / "my-docs" / "manifest.json").read_text())
     assert manifest["byo"]["source_files"] == ["a.txt", "b.md"]
     assert manifest["byo"]["failures"] == []
     assert sink.calls[0]["n_docs"] == 2
