@@ -38,6 +38,24 @@ def _golds_for(q: dict) -> list[Gold]:
     ]
 
 
+def _gold_overlap_in_chunk(span: ChunkSpan, gold: GoldSpan, max_chars: int = 240) -> str | None:
+    """The chunk-text slice that covers the gold token range, or None if disjoint.
+
+    Lets a human visually confirm the gold span's text actually lands inside a chunk:
+    the [HIT]/[miss] mark is positional (token-range overlap) and never reads this text,
+    so showing it is an independent check, not a restatement of the verdict. A near-miss
+    chunk with partial overlap shows the clipped fragment that explains why it missed.
+    """
+    if span.chunk.doc_id != gold.doc_id:
+        return None
+    lo = max(span.start_token, gold.start_token)
+    hi = min(span.end_token, gold.end_token)
+    if lo >= hi:
+        return None
+    tokens = span.chunk.text.split()
+    return " ".join(tokens[lo - span.start_token : hi - span.start_token])[:max_chars]
+
+
 def render_corpus(
     corpus_dir: Path,
     out_path: Path,
@@ -111,6 +129,10 @@ def render_corpus(
                     f"- [{mark}] {s.chunk.chunk_id} tokens "
                     f"[{s.start_token},{s.end_token}) - {s.chunk.text[:240]}"
                 )
+                if q["gold"]["type"] == "span":
+                    overlap = _gold_overlap_in_chunk(s, golds[0])
+                    if overlap is not None:
+                        lines.append(f"  - gold-span text in this chunk: {overlap}")
         hit_flags = [any(is_hit(s, g) for s in spans) for g in golds]
         n_golds += len(golds)
         n_golds_hit += sum(hit_flags)
