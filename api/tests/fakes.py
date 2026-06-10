@@ -15,7 +15,7 @@ import math
 from ragreceipts.eval.ragas_adapter import RagasScores
 from ragreceipts.traces.models import TraceEvent
 from ragreceipts.types import Chunk, ScoredChunk
-from ragreceipts.vendors.base import ClaudeResult, ParsedResult, VendorUnavailable
+from ragreceipts.vendors.base import ClaudeResult, ParsedResult, Triple, VendorUnavailable
 
 
 def _unit_vector(text: str, dim: int) -> list[float]:
@@ -189,6 +189,26 @@ class FakeClaude:
         if isinstance(payload, str):
             raise AssertionError("FakeClaude.parse expected a parsed-object script item, got str")
         return ParsedResult(parsed=payload, input_tokens=input_tokens, output_tokens=output_tokens)
+
+
+class FakeOpenIE:
+    """Scripted OpenIETransport (FINAL R5 shape; Plan F consumes it as-is).
+
+    script: dict keyed by passage TEXT -> list[Triple]; an unknown passage yields [].
+    fail=True raises VendorUnavailable on extract() (the graph-build degrade path).
+    Output length/order always mirror the input passages (OpenIETransport contract).
+    """
+
+    def __init__(self, script: dict[str, list[Triple]] | None = None, fail: bool = False):
+        self.script = script or {}
+        self.fail = fail
+        self.calls: list[list[str]] = []
+
+    def extract(self, passages: list[str]) -> list[list[Triple]]:
+        if self.fail:
+            raise VendorUnavailable("FakeOpenIE scripted failure")
+        self.calls.append(list(passages))
+        return [list(self.script.get(p, [])) for p in passages]
 
 
 # --- Plan B: RAGAS judge fake -------------------------------------------------

@@ -61,3 +61,16 @@ class ClaudeTransport(Protocol):
         output_format: type,
         temperature: float = 0.0,
     ) -> ParsedResult: ...
+
+
+@dataclass(frozen=True)
+class Triple:
+    subject: str
+    relation: str
+    object: str
+
+
+class OpenIETransport(Protocol):
+    def extract(self, passages: list[str]) -> list[list[Triple]]:
+        """One triple list per input passage (same order, same length)."""
+        ...
