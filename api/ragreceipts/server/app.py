@@ -11,10 +11,12 @@ sys.path, which the TESTING=1 seam needs to import the tests package.
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from dataclasses import asdict
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -86,6 +88,64 @@ def get_trace(trace_id: str, deps: AppDeps = Depends(get_deps)) -> m.TraceRespon
     return m.TraceResponse(
         trace_id=trace_id,
         events=[m.TraceEventModel(**asdict(e)) for e in events],
+    )
+
+
+@router.get("/corpora", response_model=m.CorporaResponse)
+def list_corpora(deps: AppDeps = Depends(get_deps)) -> m.CorporaResponse:
+    out: list[m.CorpusModel] = []
+    if deps.paths.corpora_dir.exists():
+        for manifest_path in sorted(deps.paths.corpora_dir.glob("*/manifest.json")):
+            try:
+                manifest = json.loads(manifest_path.read_text())
+            except json.JSONDecodeError:
+                manifest = {"error": "unreadable manifest"}  # disclose, don't hide
+            out.append(m.CorpusModel(corpus_id=manifest_path.parent.name, manifest=manifest))
+    return m.CorporaResponse(corpora=out)
+
+
+def _load_receipts(directory: Path, source: str, errors: list[str]) -> list[m.ReceiptEntryModel]:
+    entries: list[m.ReceiptEntryModel] = []
+    if not directory.exists():
+        return entries
+    for path in sorted(directory.glob("*.json")):
+        try:
+            data = json.loads(path.read_text())
+            entries.append(
+                m.ReceiptEntryModel(
+                    source=source,
+                    path=str(path),
+                    schema_version=int(data["schema_version"]),
+                    receipt=data["receipt"],
+                )
+            )
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            errors.append(f"{path}: {exc.__class__.__name__}: {exc}")
+    return entries
+
+
+@router.get("/receipts", response_model=m.ReceiptsResponse)
+def list_receipts(deps: AppDeps = Depends(get_deps)) -> m.ReceiptsResponse:
+    errors: list[str] = []
+    receipts = _load_receipts(deps.paths.receipts_committed_dir, "committed", errors)
+    receipts += _load_receipts(deps.paths.receipts_local_dir, "local", errors)
+    return m.ReceiptsResponse(receipts=receipts, errors=errors)
+
+
+@router.get("/eval/runs", response_model=m.EvalRunsResponse)
+def list_eval_runs(deps: AppDeps = Depends(get_deps)) -> m.EvalRunsResponse:
+    return m.EvalRunsResponse(
+        runs=[
+            m.EvalRunListItem(
+                job_id=r.job_id,
+                status=r.status.value,
+                corpus_id=r.params.get("corpus_id", "?"),
+                preset=r.params.get("preset", "?"),
+                slice=r.params.get("slice", "?"),
+                created_at=r.created_at,
+            )
+            for r in deps.job_runner.list(kind="eval")
+        ]
     )
 
 
