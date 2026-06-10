@@ -120,12 +120,15 @@ def build_deps() -> AppDeps:
     job_runner = JobRunner(paths.jobs_db)
     query_runner = None
     eval_runner = None
+    ingest_sink = None
     if qdrant is not None and all(v.configured for v in vendors):
         from ragreceipts.server.evalruns import RealEvalRunner
+        from ragreceipts.server.ingest_byo import build_real_ingest_sink
         from ragreceipts.server.pipeline import build_real_query_runner
 
         query_runner = build_real_query_runner(paths=paths, qdrant=qdrant, trace_store=trace_store)
         eval_runner = RealEvalRunner(data_dir=paths.data_dir)
+        ingest_sink = build_real_ingest_sink(paths=paths, qdrant=qdrant)
     return AppDeps(
         paths=paths,
         vendors=vendors,
@@ -134,6 +137,6 @@ def build_deps() -> AppDeps:
         job_runner=job_runner,
         query_runner=query_runner,  # wired when all keys + QDRANT_URL are present (R7)
         eval_runner=eval_runner,  # wired when all keys + QDRANT_URL are present (R7)
-        ingest_sink=None,  # wired in Task 13 when all keys + QDRANT_URL are present
+        ingest_sink=ingest_sink,  # wired when all keys + QDRANT_URL are present (R7)
         testing_mode=False,
     )

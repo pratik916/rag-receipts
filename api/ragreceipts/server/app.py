@@ -17,8 +17,9 @@ from collections.abc import Callable
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
+from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from ragreceipts.server import models as m
@@ -102,6 +103,31 @@ def list_corpora(deps: AppDeps = Depends(get_deps)) -> m.CorporaResponse:
                 manifest = {"error": "unreadable manifest"}  # disclose, don't hide
             out.append(m.CorpusModel(corpus_id=manifest_path.parent.name, manifest=manifest))
     return m.CorporaResponse(corpora=out)
+
+
+@router.post("/corpora/ingest", response_model=m.IngestResponse)
+async def ingest_corpus(
+    corpus_id: Annotated[str, Form()],
+    files: Annotated[list[UploadFile], File()],
+    deps: AppDeps = Depends(get_deps),
+) -> m.IngestResponse:
+    if deps.ingest_sink is None:
+        missing = ", ".join(_missing_env_vars(deps))
+        raise HTTPException(503, detail=f"ingest unavailable; missing env vars: {missing}")
+    try:
+        m._validate_corpus_id(corpus_id)
+    except ValueError as exc:
+        raise HTTPException(422, detail=str(exc))
+    upload_dir = deps.paths.uploads_dir / corpus_id
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    saved: list[str] = []
+    for f in files:
+        name = Path(f.filename or "unnamed").name  # strip any client-sent path
+        dest = upload_dir / name
+        dest.write_bytes(await f.read())
+        saved.append(str(dest))
+    job_id = deps.job_runner.submit("ingest", {"corpus_id": corpus_id, "files": saved})
+    return m.IngestResponse(job_id=job_id, corpus_id=corpus_id)
 
 
 def _load_receipts(directory: Path, source: str, errors: list[str]) -> list[m.ReceiptEntryModel]:
@@ -225,6 +251,12 @@ def create_app(deps_factory: Callable[[], AppDeps] = build_deps) -> FastAPI:
                 ctx.emit(f"eval complete run_id={run_id}", 1.0)
 
             deps.job_runner.register("eval", eval_handler)
+        if deps.ingest_sink is not None:
+            from ragreceipts.server.ingest_byo import make_ingest_handler
+
+            deps.job_runner.register(
+                "ingest", make_ingest_handler(deps.ingest_sink, deps.paths.corpora_dir)
+            )
         deps.job_runner.start()
         try:
             yield

@@ -72,6 +72,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/corpora/ingest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ingest Corpus */
+        post: operations["ingest_corpus_corpora_ingest_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/receipts": {
         parameters: {
             query?: never;
@@ -145,6 +162,13 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** Body_ingest_corpus_corpora_ingest_post */
+        Body_ingest_corpus_corpora_ingest_post: {
+            /** Corpus Id */
+            corpus_id: string;
+            /** Files */
+            files: string[];
+        };
         /** CitationModel */
         CitationModel: {
             /** N */
@@ -257,6 +281,13 @@ export interface components {
             missing_env_vars: string[];
             /** Testing Mode */
             testing_mode: boolean;
+        };
+        /** IngestResponse */
+        IngestResponse: {
+            /** Job Id */
+            job_id: string;
+            /** Corpus Id */
+            corpus_id: string;
         };
         /** JobEventModel */
         JobEventModel: {
@@ -498,6 +529,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CorporaResponse"];
+                };
+            };
+        };
+    };
+    ingest_corpus_corpora_ingest_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_ingest_corpus_corpora_ingest_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

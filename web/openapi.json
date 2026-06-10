@@ -118,6 +118,44 @@
         }
       }
     },
+    "/corpora/ingest": {
+      "post": {
+        "summary": "Ingest Corpus",
+        "operationId": "ingest_corpus_corpora_ingest_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_ingest_corpus_corpora_ingest_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/receipts": {
       "get": {
         "summary": "List Receipts",
@@ -271,6 +309,28 @@
   },
   "components": {
     "schemas": {
+      "Body_ingest_corpus_corpora_ingest_post": {
+        "properties": {
+          "corpus_id": {
+            "type": "string",
+            "title": "Corpus Id"
+          },
+          "files": {
+            "items": {
+              "type": "string",
+              "contentMediaType": "application/octet-stream"
+            },
+            "type": "array",
+            "title": "Files"
+          }
+        },
+        "type": "object",
+        "required": [
+          "corpus_id",
+          "files"
+        ],
+        "title": "Body_ingest_corpus_corpora_ingest_post"
+      },
       "CitationModel": {
         "properties": {
           "n": {
@@ -546,6 +606,24 @@
           "testing_mode"
         ],
         "title": "HealthResponse"
+      },
+      "IngestResponse": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id"
+          },
+          "corpus_id": {
+            "type": "string",
+            "title": "Corpus Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "corpus_id"
+        ],
+        "title": "IngestResponse"
       },
       "JobEventModel": {
         "properties": {
