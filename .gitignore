@@ -22,3 +22,6 @@ node_modules/
 # Tooling
 .superpowers/
 .playwright-mcp/
+
+# internal planning scaffolding (design specs, implementation plans, brainstorm mockups) — local-only
+docs/superpowers/

@@ -128,5 +128,4 @@ by an in-process worker thread.
 - LLM nondeterminism, model IDs, prompt versions, pricing-table version, and corpus
   manifest hashes are recorded in every receipt.
 
-Design spec: `docs/superpowers/specs/2026-06-10-rag-receipts-design.md` ·
 Research grounding: `docs/research/2026-06-10-deep-research-advanced-rag.json`
