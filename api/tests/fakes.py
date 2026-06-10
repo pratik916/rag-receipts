@@ -13,6 +13,7 @@ import hashlib
 import math
 
 from ragreceipts.eval.ragas_adapter import RagasScores
+from ragreceipts.types import Chunk, ScoredChunk
 from ragreceipts.vendors.base import ClaudeResult, ParsedResult, VendorUnavailable
 
 
@@ -123,6 +124,7 @@ class FakeClaude:
         self.script = list(script or [])
         self.complete_calls: list[dict] = []
         self.parse_calls: list[dict] = []
+        self.calls: list[dict] = []
 
     def _pop(self, caller: str) -> tuple[object, int, int]:
         if not self.script:
@@ -136,6 +138,7 @@ class FakeClaude:
     def complete(
         self, *, model: str, system: str, user: str, max_tokens: int, temperature: float = 0.0
     ) -> ClaudeResult:
+        self.calls.append({"method": "complete", "model": model, "system": system, "user": user})
         self.complete_calls.append(
             {
                 "model": model,
@@ -162,6 +165,15 @@ class FakeClaude:
         output_format: type,
         temperature: float = 0.0,
     ) -> ParsedResult:
+        self.calls.append(
+            {
+                "method": "parse",
+                "output_format": output_format.__name__,
+                "model": model,
+                "system": system,
+                "user": user,
+            }
+        )
         self.parse_calls.append(
             {
                 "model": model,
@@ -191,3 +203,51 @@ class FakeRagas:
     def score(self, *, question: str, answer: str, contexts: list[str]) -> RagasScores:
         self.calls.append({"question": question, "answer": answer, "contexts": contexts})
         return self._scores.pop(0)
+
+
+# --- Plan C: agent-graph test doubles ----------------------------------------
+
+
+def make_chunk(i: int, *, doc: str = "d1", text: str | None = None) -> ScoredChunk:
+    """Tiny ScoredChunk fixture; chunk_id f'{doc}:{i}', passage_id == doc.
+
+    start_token/end_token (R3) are consecutive positional ranges so span math
+    stays valid: chunk i covers tokens [i*n, (i+1)*n) of its parent passage.
+    """
+    body = text or f"passage text {i}"
+    n = len(body.split())
+    return ScoredChunk(
+        chunk=Chunk(
+            chunk_id=f"{doc}:{i}",
+            corpus_id="test",
+            doc_id=doc,
+            passage_id=doc,
+            text=body,
+            position=i,
+            start_token=i * n,
+            end_token=(i + 1) * n,
+        ),
+        score=1.0 / (i + 1),
+        source="rrf",
+    )
+
+
+class FakeCore:
+    """Duck-types RetrievalCore.retrieve for agent-graph tests (no Qdrant, no keys).
+
+    by_query maps exact query text -> scripted results; anything else returns the
+    two-chunk default corpus. Records every query for transition assertions.
+    """
+
+    def __init__(
+        self,
+        by_query: dict[str, list[ScoredChunk]] | None = None,
+        default: list[ScoredChunk] | None = None,
+    ):
+        self.by_query = by_query or {}
+        self.default = default if default is not None else [make_chunk(0), make_chunk(1)]
+        self.queries: list[str] = []
+
+    def retrieve(self, query: str) -> list[ScoredChunk]:
+        self.queries.append(query)
+        return self.by_query.get(query, list(self.default))
