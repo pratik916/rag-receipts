@@ -13,6 +13,7 @@ import uuid
 
 from ragreceipts.config import PipelineConfig
 from ragreceipts.retrieval.base import Retriever
+from ragreceipts.retrieval.fusion import rrf_fuse
 from ragreceipts.retrieval.rerank import RerankStage
 from ragreceipts.traces.models import TraceCallback, TraceEvent
 from ragreceipts.types import ScoredChunk
@@ -95,21 +96,11 @@ class RetrievalCore:
         if len(retrievers) == 1:  # passthrough keeps source labels honest
             return retrievers[0].search(query, k)
         # top_k_fuse is the PER-RETRIEVER candidate depth; the fused UNION becomes the
-        # candidate pool and top_k_final does the final cut downstream. HybridRRF couples
-        # per-retriever depth and post-truncation to a single k (and would drop union
-        # members below that depth), so apply the binding RRF formula here over each
-        # retriever's top-k, keeping the full union (rrf_k=60, deterministic id tie-break).
-        scores: dict[str, float] = {}
-        chunk_by_id = {}
-        for retriever in retrievers:
-            for rank, scored in enumerate(retriever.search(query, k), start=1):
-                chunk_id = scored.chunk.chunk_id
-                chunk_by_id[chunk_id] = scored.chunk
-                scores[chunk_id] = scores.get(chunk_id, 0.0) + 1.0 / (60 + rank)
-        ordered = sorted(scores.items(), key=lambda item: (-item[1], item[0]))
-        return [
-            ScoredChunk(chunk=chunk_by_id[cid], score=score, source="rrf") for cid, score in ordered
-        ]
+        # candidate pool and top_k_final does the final cut downstream. limit=None keeps the
+        # full union (HybridRRF.search truncates to k, which would drop union members below
+        # that depth). Sharing rrf_fuse keeps this formula identical to HybridRRF's.
+        rank_lists = [retriever.search(query, k) for retriever in retrievers]
+        return rrf_fuse(rank_lists)
 
     def _emit(
         self,
