@@ -1,0 +1,50 @@
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.18.0   # R7: matches qdrant-client >=1.18,<2
+    volumes:
+      - qdrant-storage:/qdrant/storage
+    # The qdrant image ships no curl/wget by design (security stance,
+    # github.com/qdrant/qdrant/issues/4250). Bash /dev/tcp TCP-connect probe instead.
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+
+  api:
+    build: ./api
+    env_file: .env            # vendor keys reach the api ONLY
+    environment:
+      QDRANT_URL: http://qdrant:6333   # REQUIRED by the server (R7) — no silent default
+      RAGRECEIPTS_DATA_DIR: /data
+      RAGRECEIPTS_RECEIPTS_DIR: /receipts
+      RAGRECEIPTS_CORS_ORIGINS: http://localhost:3000
+    volumes:
+      - app-data:/data                  # SQLite (traces/jobs), bm25s indexes, corpora, local receipts
+      - ./receipts:/receipts:ro         # committed receipts, read-only at runtime (spec)
+    ports:
+      - "8000:8000"
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  web:
+    build:
+      context: ./web
+      args:
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:8000   # browser-facing URL
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  qdrant-storage:
+  app-data:
