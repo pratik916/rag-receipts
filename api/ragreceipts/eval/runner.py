@@ -83,6 +83,11 @@ EST_S2_HAIKU_CALLS = 2 + S2_MAX_HOPS  # route + decompose + S2_MAX_HOPS grades
 EST_S2_HAIKU_INPUT_TOKENS = 1_200  # ~5 chunks x 200 tokens + prompt
 EST_S2_HAIKU_OUTPUT_TOKENS = 100
 
+# Graph-recognition estimate inputs (G4): one Haiku call filtering ~GRAPH_SEED_TOP_N
+# seed phrases/triples down to the query-relevant set.
+EST_GRAPH_RECOGNITION_INPUT_TOKENS = 900
+EST_GRAPH_RECOGNITION_OUTPUT_TOKENS = 80
+
 
 @dataclass(frozen=True)
 class SkippedCell:
@@ -115,6 +120,14 @@ def estimate_run_cost(preset_names: list[str], n_queries: int, *, ragas: bool = 
             per_q += usd_for_tokens(EMBED_MODEL, EST_QUERY_EMBED_TOKENS, 0)
         if cfg.query.rerank:
             per_q += usd_for_rerank(1)
+        if cfg.query.graph and cfg.query.graph_recognition == "llm":
+            # Graph recognition is one Haiku call per query (priced like the router);
+            # embedding-mode graph makes no LLM recognition call.
+            per_q += usd_for_tokens(
+                ROUTER_MODEL,
+                EST_GRAPH_RECOGNITION_INPUT_TOKENS,
+                EST_GRAPH_RECOGNITION_OUTPUT_TOKENS,
+            )
         if cfg.query.route_mode is not RouteMode.FORCE_S1:
             per_q += EST_S2_HAIKU_CALLS * usd_for_tokens(
                 ROUTER_MODEL, EST_S2_HAIKU_INPUT_TOKENS, EST_S2_HAIKU_OUTPUT_TOKENS
@@ -206,6 +219,7 @@ class AblationRunner:
         slice_name: str,
         presets: list[str],
         spend_cap_usd: float,
+        graph_recognition: str | None = None,
     ) -> dict:
         manifest = load_manifest(self._data_dir, corpus_id)
         queries = slice_queries(
@@ -223,7 +237,7 @@ class AblationRunner:
         skipped: list[SkippedCell] = []
         results_by_preset: dict[str, dict] = {}
         for name in presets:
-            cfg = PRESETS[name]
+            cfg = self._apply_graph_recognition(PRESETS[name], graph_recognition)
             if cfg.query.route_mode is not RouteMode.FORCE_S1:
                 # R10: permanent gate — AUTO presets run on multi-hop corpora only.
                 # (The temporary "requires Plan C" skip that used to follow is gone.)
@@ -259,6 +273,26 @@ class AblationRunner:
         )
         write_run_doc(doc, self._data_dir)
         return doc
+
+    @staticmethod
+    def _apply_graph_recognition(
+        cfg: PipelineConfig, graph_recognition: str | None
+    ) -> PipelineConfig:
+        """G4 recognition mini-ablation: override graph_recognition on graph presets.
+
+        Returns the preset unchanged unless it is a graph preset AND an override was
+        requested; the override flows into the cell's QueryConfig so the core_factory
+        (which reads cfg.query.graph_recognition) builds the GraphRetriever in the
+        requested mode, and the receipt's config records it.
+        """
+        if graph_recognition is None or not cfg.query.graph:
+            return cfg
+        if graph_recognition not in ("llm", "embedding"):
+            raise ValueError(
+                f"graph_recognition must be 'llm' or 'embedding', got {graph_recognition!r}"
+            )
+        new_query = dataclasses.replace(cfg.query, graph_recognition=graph_recognition)
+        return dataclasses.replace(cfg, query=new_query)
 
     def _run_preset(
         self,

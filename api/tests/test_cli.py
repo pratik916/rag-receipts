@@ -271,3 +271,41 @@ def test_promote_missing_run_is_actionable(tmp_path, capsys) -> None:
     rc = main(["receipts", "promote", "ghost", "--data-dir", str(tmp_path)])
     assert rc == 2
     assert "ghost" in capsys.readouterr().err
+
+
+def test_eval_accepts_graph_recognition_flag(monkeypatch, tmp_path):
+    """--graph-recognition is parsed and threaded to the runner (recognition sweep)."""
+    captured: dict = {}
+
+    class _Runner:
+        def __init__(self, **kw):
+            pass
+
+        def run(self, **kw):
+            captured.update(kw)
+            return {"skipped": [], "receipts": []}
+
+    monkeypatch.setattr(cli, "AblationRunner", _Runner)
+    monkeypatch.setattr(cli, "_make_claude", lambda: object())
+    monkeypatch.setattr(cli, "_build_core_real", lambda *a, **k: object())
+    monkeypatch.setattr(cli, "estimate_run_cost", lambda *a, **k: 0.01)
+    monkeypatch.setattr(cli, "load_queries", lambda *a, **k: [])
+    monkeypatch.setattr(cli, "slice_query_ids", lambda *a, **k: [])
+    monkeypatch.setattr(cli, "slice_queries", lambda *a, **k: [])
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
+    rc = cli.main(
+        [
+            "eval",
+            "--corpus",
+            "graph-harness",
+            "--slice",
+            "smoke",
+            "--presets",
+            "graph",
+            "--graph-recognition",
+            "embedding",
+            "--yes",
+        ]
+    )
+    assert rc == 0
+    assert captured["graph_recognition"] == "embedding"

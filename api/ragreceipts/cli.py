@@ -123,6 +123,12 @@ def main(argv: list[str] | None = None) -> int:
         help="score RAGAS faithfulness/relevancy (extra Claude spend)",
     )
     eval_p.add_argument(
+        "--graph-recognition",
+        choices=["llm", "embedding"],
+        default=None,
+        help="override graph_recognition for graph presets (recognition mini-ablation)",
+    )
+    eval_p.add_argument(
         "--yes", action="store_true", help="skip the interactive cost confirmation gate"
     )
 
@@ -286,6 +292,7 @@ def _cmd_eval(args: argparse.Namespace) -> int:
             slice_name=args.slice,
             presets=preset_names,
             spend_cap_usd=args.spend_cap_usd,
+            graph_recognition=args.graph_recognition,
         )
     except SpendCapExceeded as exc:
         print(f"ABORTED: {exc}", file=sys.stderr)
