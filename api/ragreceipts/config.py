@@ -26,6 +26,8 @@ class QueryConfig:  # query-time flags → same index, different code path
     bm25: bool = True
     dense: bool = True
     rerank: bool = True
+    graph: bool = False  # G1: enable the graph retriever
+    graph_recognition: str = "llm"  # G1: "llm" | "embedding"
     route_mode: RouteMode = RouteMode.FORCE_S1
     top_k_fuse: int = 50  # candidates into RRF / rerank
     top_k_final: int = 5
@@ -58,6 +60,30 @@ PRESETS: dict[str, PipelineConfig] = {
         name="rerank",
         ingest=IngestConfig(contextual=True),
         query=QueryConfig(bm25=True, dense=True, rerank=True, route_mode=RouteMode.FORCE_S1),
+    ),
+    "graph": PipelineConfig(
+        name="graph",
+        ingest=IngestConfig(contextual=True),
+        query=QueryConfig(
+            bm25=False,
+            dense=False,
+            rerank=False,
+            graph=True,
+            graph_recognition="llm",
+            route_mode=RouteMode.FORCE_S1,
+        ),
+    ),
+    "graph-rrf": PipelineConfig(
+        name="graph-rrf",
+        ingest=IngestConfig(contextual=True),
+        query=QueryConfig(
+            bm25=True,
+            dense=True,
+            rerank=False,
+            graph=True,
+            graph_recognition="llm",
+            route_mode=RouteMode.FORCE_S1,
+        ),
     ),
     "router-on": PipelineConfig(
         name="router-on",
