@@ -20,7 +20,9 @@ from pydantic import BaseModel
 from qdrant_client import QdrantClient
 
 from ragreceipts.constants import EMBED_MODEL, RERANK_MODEL, ROUTER_MODEL, SYNTH_MODEL
+from ragreceipts.eval.pricing import PRICING_VERSION
 from ragreceipts.server.deps import VENDOR_ENV_VARS, AppDeps, AppPaths, VendorCapability
+from ragreceipts.server.evalruns import CostEstimate
 from ragreceipts.server.jobs import JobRunner
 from ragreceipts.server.pipeline import Citation, QueryResult
 from ragreceipts.traces.models import TraceEvent
@@ -201,6 +203,113 @@ class FixtureQueryRunner:
         )
 
 
+_PRESET_RECALL = {
+    "bm25-only": 0.55,
+    "dense-rrf": 0.63,
+    "contextual": 0.66,
+    "rerank": 0.78,
+    "router-on": 0.80,
+}
+# Per-preset index hashes mirror the contracts: IngestConfig.contextual selects the
+# named vector AND the matching manifest hash. dense-rrf queries dense_isolated;
+# contextual/rerank/router-on query dense_contextual — the differing dense hash is
+# what drives the Ablation Lab's cell-level cross-index marker (R11).
+_PRESET_INDEX_HASHES = {
+    "bm25-only": {"sparse": "sha256:fixture-sparse"},
+    "dense-rrf": {"dense_isolated": "sha256:fixture-iso", "sparse": "sha256:fixture-sparse"},
+    "contextual": {"dense_contextual": "sha256:fixture-ctx", "sparse": "sha256:fixture-sparse"},
+    "rerank": {"dense_contextual": "sha256:fixture-ctx", "sparse": "sha256:fixture-sparse"},
+    "router-on": {"dense_contextual": "sha256:fixture-ctx", "sparse": "sha256:fixture-sparse"},
+}
+
+
+def _fixture_receipt(preset: str, run_id: str) -> dict:
+    r5 = _PRESET_RECALL.get(preset, 0.6)
+    return {
+        "run_id": run_id,
+        "corpus_id": FIXTURE_CORPUS_ID,
+        "preset": preset,
+        "config": {"name": preset},
+        "index_hashes": _PRESET_INDEX_HASHES.get(preset, {"sparse": "sha256:fixture-sparse"}),
+        "models": {
+            "router": "claude-haiku-4-5-20251001",
+            "synth": "claude-sonnet-4-6",
+            "judge": "claude-sonnet-4-6",
+            "rerank": "rerank-v4.0-pro",
+            "embed": "voyage-context-3",
+        },
+        "pricing_table_version": PRICING_VERSION,
+        "prompts_version": "n/a",
+        "n_total": 15,
+        "n_failed": 0,
+        "n_abstained": 1,
+        "metrics": {
+            "recall_at_5": r5,
+            "mrr_at_3": round(r5 - 0.14, 2),
+            "em": 0.33,
+            "f1": 0.46,
+            "ragas_faithfulness": 0.79,
+            "ragas_answer_relevancy": 0.74,
+            "latency_p50_ms": 820,
+            "latency_p95_ms": 1900,
+            "usd_per_query": 0.011,
+        },
+        # R11: per_query rows use the committed schema exactly —
+        # {query_id, retrieved_chunk_ids, latency_ms, usd, flags: {...}}
+        "per_query": [
+            {
+                "query_id": "q-001",
+                "retrieved_chunk_ids": ["geo-001:0"],
+                "latency_ms": 800,
+                "usd": 0.01,
+                "flags": {},
+            }
+        ],
+        "anchors": [],
+    }
+
+
+class FixtureEvalRunner:
+    """Deterministic EvalRunner for TESTING mode: fixed estimate; writes a complete
+    schema_version-1 receipt to data/receipts-local/ so the Ablation Lab local toggle
+    has real files to render."""
+
+    def __init__(self, paths: AppPaths) -> None:
+        self._paths = paths
+
+    def estimate(self, *, corpus_id: str, preset: str, slice_name: str) -> CostEstimate:
+        n = 15 if slice_name == "smoke" else 300
+        return CostEstimate(
+            n_queries=n,
+            est_tokens=n * 4700,
+            est_usd=round(n * 0.018, 2),
+            pricing_table_version=PRICING_VERSION,
+        )
+
+    def run(self, *, corpus_id, preset, slice_name, spend_cap_usd, emit) -> str:
+        import uuid as _uuid
+
+        run_id = f"local-{preset}-{_uuid.uuid4().hex[:8]}"
+        emit("scoring fixture queries", 0.5)
+        path = self._paths.receipts_local_dir / f"{run_id}.json"
+        # R11 committed-envelope schema: nondeterminism_note is Plan B's fixed
+        # constant — import it rather than duplicating the literal.
+        from ragreceipts.eval.receipts import NONDETERMINISM_NOTE
+
+        path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "nondeterminism_note": NONDETERMINISM_NOTE,
+                    "receipt": _fixture_receipt(preset, run_id),
+                },
+                indent=2,
+            )
+        )
+        emit("receipt written", 1.0)
+        return run_id
+
+
 def build_testing_deps() -> AppDeps:
     data_dir = Path(
         os.environ.get("RAGRECEIPTS_DATA_DIR", tempfile.mkdtemp(prefix="ragreceipts-testing-"))
@@ -221,7 +330,7 @@ def build_testing_deps() -> AppDeps:
             load_fixture_chunks(),
             trace_store,
         ),
-        eval_runner=None,  # FixtureEvalRunner wired in Task 7
+        eval_runner=FixtureEvalRunner(paths),
         ingest_sink=None,  # TestingIngestSink wired in Task 14
         testing_mode=True,
     )

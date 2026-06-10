@@ -149,11 +149,82 @@ def list_eval_runs(deps: AppDeps = Depends(get_deps)) -> m.EvalRunsResponse:
     )
 
 
+@router.post("/eval/runs", response_model=m.EvalRunResponse)
+def create_eval_run(req: m.EvalRunRequest, deps: AppDeps = Depends(get_deps)) -> m.EvalRunResponse:
+    if deps.eval_runner is None:
+        missing = ", ".join(_missing_env_vars(deps))
+        raise HTTPException(503, detail=f"eval unavailable; missing env vars: {missing}")
+    est = deps.eval_runner.estimate(
+        corpus_id=req.corpus_id,
+        preset=req.preset,
+        slice_name=req.slice,
+    )
+    estimate = m.CostEstimateModel(**asdict(est))
+    if not req.confirm:  # confirmation gate: nothing runs until confirm=true
+        return m.EvalRunResponse(status="needs_confirmation", estimate=estimate, job_id=None)
+    if est.est_usd > req.spend_cap_usd:
+        raise HTTPException(
+            400,
+            detail=f"estimated cost ${est.est_usd:.2f} exceeds spend cap"
+            f" ${req.spend_cap_usd:.2f}; raise spend_cap_usd to proceed",
+        )
+    job_id = deps.job_runner.submit("eval", req.model_dump())
+    return m.EvalRunResponse(status="started", estimate=estimate, job_id=job_id)
+
+
+def _job_response(deps: AppDeps, job_id: str) -> m.JobResponse:
+    row = deps.job_runner.get(job_id)
+    if row is None:
+        raise HTTPException(404, detail=f"unknown job: {job_id}")
+    return m.JobResponse(
+        job_id=row.job_id,
+        kind=row.kind,
+        status=row.status.value,
+        params=row.params,
+        error=row.error,
+        events=[m.JobEventModel(**asdict(e)) for e in deps.job_runner.events(job_id)],
+    )
+
+
+@router.get("/jobs/{job_id}", response_model=m.JobResponse)
+def get_job(job_id: str, deps: AppDeps = Depends(get_deps)) -> m.JobResponse:
+    return _job_response(deps, job_id)
+
+
+@router.post("/jobs/{job_id}/resume", response_model=m.JobResponse)
+def resume_job(job_id: str, deps: AppDeps = Depends(get_deps)) -> m.JobResponse:
+    try:
+        deps.job_runner.resume(job_id)
+    except KeyError:
+        raise HTTPException(404, detail=f"unknown job: {job_id}")
+    except ValueError as exc:
+        raise HTTPException(409, detail=str(exc))
+    return _job_response(deps, job_id)
+
+
 def create_app(deps_factory: Callable[[], AppDeps] = build_deps) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         deps = deps_factory()
         app.state.deps = deps
+        if deps.eval_runner is not None:
+            from ragreceipts.server.evalruns import EvalRunner  # noqa: F401  (protocol doc)
+
+            eval_runner = deps.eval_runner
+
+            def eval_handler(ctx):
+                p = ctx.params
+                ctx.emit(f"eval start preset={p['preset']} slice={p['slice']}", 0.0)
+                run_id = eval_runner.run(
+                    corpus_id=p["corpus_id"],
+                    preset=p["preset"],
+                    slice_name=p["slice"],
+                    spend_cap_usd=p["spend_cap_usd"],
+                    emit=ctx.emit,
+                )
+                ctx.emit(f"eval complete run_id={run_id}", 1.0)
+
+            deps.job_runner.register("eval", eval_handler)
         deps.job_runner.start()
         try:
             yield
