@@ -109,3 +109,25 @@ def write_harness_corpus(data_dir: Path, corpus_id: str, queries: list[dict]) ->
             }
         )
     )
+
+
+# --- Plan F: graph self-test helper -------------------------------------------
+
+
+def build_misaligned_graph_queries() -> list[dict]:
+    """Graph fixture queries with every gold passage_id broken ('WRONG-...').
+
+    The graph self-test asserts this scores recall 0.0 even though PPR still lands
+    on the (correctly-built) gold passage NODE — proving the alignment rule, not the
+    graph, is what the metric trusts."""
+    from tests.graph_fixtures import fixture_queries
+
+    out: list[dict] = []
+    for q in fixture_queries():
+        broken = dict(q)
+        broken["gold"] = {
+            "type": "passage",
+            "passage_ids": [f"WRONG-{pid}" for pid in q["gold"]["passage_ids"]],
+        }
+        out.append(broken)
+    return out

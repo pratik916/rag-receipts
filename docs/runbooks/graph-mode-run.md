@@ -62,6 +62,72 @@ The graph is rebuild-only (no incremental updates, per the Phase-2 non-goals). R
 then re-run step 2; the new artifact + new manifest hash supersede the old one. Receipts
 always cite the manifest hash, so a stale graph can never be silently attributed.
 
-<!-- Plan F appends: producing the two-sided "when do graphs help" receipt (graph/graph-rrf
-     presets over musique + nq), the recognition mini-ablation, and the live router-on
-     graph-route run. -->
+## 5. Run the two-sided "when do graphs help" receipt (keyed)
+
+The receipt is two-sided **by construction**: the multi-hop side measures the lift; the
+simple-fact side measures the (expected) non-help. Both are real, signed deltas vs the
+`rerank` baseline — never a magnitude claim, only a direction-match against the HippoRAG-2
+anchor (`published_value=0.07`, `baseline_preset="rerank"`).
+
+Multi-hop side (the lift):
+```bash
+uv run ragreceipts eval --corpus musique-dev-300 --slice full \
+    --presets rerank,graph,graph-rrf --spend-cap-usd 30 --yes
+```
+
+Simple-fact side (the non-help — the headline insight, not a footnote):
+```bash
+uv run ragreceipts eval --corpus nq-dev-300 --slice full \
+    --presets rerank,graph,graph-rrf --spend-cap-usd 30 --yes
+```
+
+The `musique` cells carry the HippoRAG-2 anchor (direction-match only); the `nq` cells
+carry the "graphs NOT expected to help simple-fact" note plus the nq corpus-scale caveat,
+and show the (likely negative) delta honestly. Latency overhead is measured, not claimed,
+in `latency_p50_ms` / `latency_p95_ms`. **Honest USD accounting (RG8):** a graph preset's
+`usd_per_query` is **synthesis-only** — the LLM recognition-memory Haiku call has no trace
+hook, so its spend is out-of-band and is disclosed as such, never folded into the metered
+per-query cost.
+
+The harness self-test (`api/tests/test_harness_selftest_graph.py`, CI-enforced) guarantees
+this receipt **can fail**: on the fixture graph the `graph` cell's Recall@5 provably moves
+vs a deliberately weak `rerank` cell (1.0 vs 0.0), and a misaligned-gold graph run scores
+0.0 — the alignment rule is load-bearing for the graph path too.
+
+## 6. Recognition mini-ablation (keyed, optional)
+
+Does LLM recognition memory add lift over embedding-only seeding?
+```bash
+uv run ragreceipts eval --corpus musique-dev-300 --slice full \
+    --presets graph --graph-recognition embedding --spend-cap-usd 30 --yes --run-id graph-emb
+uv run ragreceipts eval --corpus musique-dev-300 --slice full \
+    --presets graph --graph-recognition llm --spend-cap-usd 30 --yes --run-id graph-llm
+```
+Compare the two `graph` cells' Recall@5 and `usd_per_query`: the lift (if any) from LLM
+recognition, with cost included. The `llm` mode adds one Haiku recognition call per query
+(out-of-band spend, per RG8); `embedding` mode makes no LLM recognition call. The
+`--graph-recognition` override flows into the cell's `QueryConfig`, so the receipt's pinned
+config records which mode actually ran.
+
+## 7. Router graph-route accuracy (keyed, optional)
+
+```bash
+uv run ragreceipts eval --corpus musique-dev-300 --slice full \
+    --presets router-on --spend-cap-usd 30 --yes
+```
+The router-on receipt reports `route_counts` (`n_s1` / `n_s2` / `n_graph`) and the
+`graph_route_precision` diagnostic: of the queries the router sent to `graph`, the fraction
+whose graph-route top-k contained a gold hit. This is kept **SEPARATE** from the headline
+retrieval metrics — "the router chose graph" is never conflated with "graph helps." The
+graph route is reachable only on a `MULTI_HOP_DATASETS` corpus (the explicit corpus gate in
+the runner, RG6); an off-corpus `graph` decision falls back to `s1`.
+
+## 8. Promote (review first, then commit)
+
+```bash
+uv run ragreceipts receipts promote <run_id>
+```
+Copies the run to `receipts/` stripped to IDs + metrics only — never passage text, never
+model answers (benchmark redistribution terms). Review the anchor notes and the two-sided
+framing before `git add`. Bump `PRICING_VERSION` first if the live Cohere/Voyage/Anthropic
+prices differ from the table (see `first-keyed-run.md`).
