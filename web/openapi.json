@@ -1,0 +1,906 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "rag-receipts",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/query": {
+      "post": {
+        "summary": "Post Query",
+        "operationId": "post_query_query_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/traces/{trace_id}": {
+      "get": {
+        "summary": "Get Trace",
+        "operationId": "get_trace_traces__trace_id__get",
+        "parameters": [
+          {
+            "name": "trace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Trace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraceResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/corpora": {
+      "get": {
+        "summary": "List Corpora",
+        "operationId": "list_corpora_corpora_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CorporaResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/receipts": {
+      "get": {
+        "summary": "List Receipts",
+        "operationId": "list_receipts_receipts_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceiptsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/eval/runs": {
+      "get": {
+        "summary": "List Eval Runs",
+        "operationId": "list_eval_runs_eval_runs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalRunsResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Eval Run",
+        "operationId": "create_eval_run_eval_runs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvalRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalRunResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/jobs/{job_id}": {
+      "get": {
+        "summary": "Get Job",
+        "operationId": "get_job_jobs__job_id__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/jobs/{job_id}/resume": {
+      "post": {
+        "summary": "Resume Job",
+        "operationId": "resume_job_jobs__job_id__resume_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CitationModel": {
+        "properties": {
+          "n": {
+            "type": "integer",
+            "title": "N"
+          },
+          "chunk_id": {
+            "type": "string",
+            "title": "Chunk Id"
+          },
+          "passage_id": {
+            "type": "string",
+            "title": "Passage Id"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "n",
+          "chunk_id",
+          "passage_id",
+          "text",
+          "score"
+        ],
+        "title": "CitationModel"
+      },
+      "CorporaResponse": {
+        "properties": {
+          "corpora": {
+            "items": {
+              "$ref": "#/components/schemas/CorpusModel"
+            },
+            "type": "array",
+            "title": "Corpora"
+          }
+        },
+        "type": "object",
+        "required": [
+          "corpora"
+        ],
+        "title": "CorporaResponse"
+      },
+      "CorpusModel": {
+        "properties": {
+          "corpus_id": {
+            "type": "string",
+            "title": "Corpus Id"
+          },
+          "manifest": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Manifest"
+          }
+        },
+        "type": "object",
+        "required": [
+          "corpus_id",
+          "manifest"
+        ],
+        "title": "CorpusModel"
+      },
+      "CostEstimateModel": {
+        "properties": {
+          "n_queries": {
+            "type": "integer",
+            "title": "N Queries"
+          },
+          "est_tokens": {
+            "type": "integer",
+            "title": "Est Tokens"
+          },
+          "est_usd": {
+            "type": "number",
+            "title": "Est Usd"
+          },
+          "pricing_table_version": {
+            "type": "string",
+            "title": "Pricing Table Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "n_queries",
+          "est_tokens",
+          "est_usd",
+          "pricing_table_version"
+        ],
+        "title": "CostEstimateModel"
+      },
+      "EvalRunListItem": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "corpus_id": {
+            "type": "string",
+            "title": "Corpus Id"
+          },
+          "preset": {
+            "type": "string",
+            "title": "Preset"
+          },
+          "slice": {
+            "type": "string",
+            "title": "Slice"
+          },
+          "created_at": {
+            "type": "number",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "status",
+          "corpus_id",
+          "preset",
+          "slice",
+          "created_at"
+        ],
+        "title": "EvalRunListItem"
+      },
+      "EvalRunRequest": {
+        "properties": {
+          "corpus_id": {
+            "type": "string",
+            "title": "Corpus Id"
+          },
+          "preset": {
+            "type": "string",
+            "title": "Preset"
+          },
+          "slice": {
+            "type": "string",
+            "enum": [
+              "smoke",
+              "full"
+            ],
+            "title": "Slice",
+            "default": "smoke"
+          },
+          "confirm": {
+            "type": "boolean",
+            "title": "Confirm",
+            "default": false
+          },
+          "spend_cap_usd": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Spend Cap Usd",
+            "default": 5.0
+          }
+        },
+        "type": "object",
+        "required": [
+          "corpus_id",
+          "preset"
+        ],
+        "title": "EvalRunRequest"
+      },
+      "EvalRunResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "needs_confirmation",
+              "started"
+            ],
+            "title": "Status"
+          },
+          "estimate": {
+            "$ref": "#/components/schemas/CostEstimateModel"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "estimate"
+        ],
+        "title": "EvalRunResponse"
+      },
+      "EvalRunsResponse": {
+        "properties": {
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/EvalRunListItem"
+            },
+            "type": "array",
+            "title": "Runs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "runs"
+        ],
+        "title": "EvalRunsResponse"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "degraded"
+            ],
+            "title": "Status"
+          },
+          "vendors": {
+            "items": {
+              "$ref": "#/components/schemas/VendorStatusModel"
+            },
+            "type": "array",
+            "title": "Vendors"
+          },
+          "qdrant_ok": {
+            "type": "boolean",
+            "title": "Qdrant Ok"
+          },
+          "missing_env_vars": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Env Vars"
+          },
+          "testing_mode": {
+            "type": "boolean",
+            "title": "Testing Mode"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "vendors",
+          "qdrant_ok",
+          "missing_env_vars",
+          "testing_mode"
+        ],
+        "title": "HealthResponse"
+      },
+      "JobEventModel": {
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "ts": {
+            "type": "number",
+            "title": "Ts"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "progress": {
+            "type": "number",
+            "title": "Progress"
+          }
+        },
+        "type": "object",
+        "required": [
+          "seq",
+          "ts",
+          "message",
+          "progress"
+        ],
+        "title": "JobEventModel"
+      },
+      "JobResponse": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "interrupted"
+            ],
+            "title": "Status"
+          },
+          "params": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Params"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/JobEventModel"
+            },
+            "type": "array",
+            "title": "Events"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "kind",
+          "status",
+          "params",
+          "error",
+          "events"
+        ],
+        "title": "JobResponse"
+      },
+      "QueryRequest": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Query"
+          },
+          "corpus_id": {
+            "type": "string",
+            "title": "Corpus Id"
+          },
+          "preset": {
+            "type": "string",
+            "title": "Preset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "query",
+          "corpus_id",
+          "preset"
+        ],
+        "title": "QueryRequest"
+      },
+      "QueryResponse": {
+        "properties": {
+          "answer": {
+            "type": "string",
+            "title": "Answer"
+          },
+          "abstained": {
+            "type": "boolean",
+            "title": "Abstained"
+          },
+          "route": {
+            "type": "string",
+            "enum": [
+              "s1",
+              "s2"
+            ],
+            "title": "Route"
+          },
+          "degraded": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Degraded"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/CitationModel"
+            },
+            "type": "array",
+            "title": "Citations"
+          },
+          "trace_id": {
+            "type": "string",
+            "title": "Trace Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "answer",
+          "abstained",
+          "route",
+          "degraded",
+          "citations",
+          "trace_id"
+        ],
+        "title": "QueryResponse"
+      },
+      "ReceiptEntryModel": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "committed",
+              "local"
+            ],
+            "title": "Source"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "schema_version": {
+            "type": "integer",
+            "title": "Schema Version"
+          },
+          "receipt": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Receipt"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "path",
+          "schema_version",
+          "receipt"
+        ],
+        "title": "ReceiptEntryModel"
+      },
+      "ReceiptsResponse": {
+        "properties": {
+          "receipts": {
+            "items": {
+              "$ref": "#/components/schemas/ReceiptEntryModel"
+            },
+            "type": "array",
+            "title": "Receipts"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Errors"
+          }
+        },
+        "type": "object",
+        "required": [
+          "receipts",
+          "errors"
+        ],
+        "title": "ReceiptsResponse"
+      },
+      "TraceEventModel": {
+        "properties": {
+          "trace_id": {
+            "type": "string",
+            "title": "Trace Id"
+          },
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "node": {
+            "type": "string",
+            "title": "Node"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Payload"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "input_tokens": {
+            "type": "integer",
+            "title": "Input Tokens"
+          },
+          "output_tokens": {
+            "type": "integer",
+            "title": "Output Tokens"
+          },
+          "duration_ms": {
+            "type": "number",
+            "title": "Duration Ms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "trace_id",
+          "seq",
+          "node",
+          "payload",
+          "model",
+          "input_tokens",
+          "output_tokens",
+          "duration_ms"
+        ],
+        "title": "TraceEventModel"
+      },
+      "TraceResponse": {
+        "properties": {
+          "trace_id": {
+            "type": "string",
+            "title": "Trace Id"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/TraceEventModel"
+            },
+            "type": "array",
+            "title": "Events"
+          }
+        },
+        "type": "object",
+        "required": [
+          "trace_id",
+          "events"
+        ],
+        "title": "TraceResponse"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "VendorStatusModel": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "configured": {
+            "type": "boolean",
+            "title": "Configured"
+          },
+          "env_var": {
+            "type": "string",
+            "title": "Env Var"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "configured",
+          "env_var"
+        ],
+        "title": "VendorStatusModel"
+      }
+    }
+  }
+}
