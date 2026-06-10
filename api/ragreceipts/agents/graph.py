@@ -43,9 +43,9 @@ class SupportsRetrieve(Protocol):
 
 class GraphState(TypedDict, total=False):
     query: str
-    route: str  # "simple" | "complex" (set by route node)
+    route: str  # "simple" | "complex" | "graph" (set by route node)
     confidence: float
-    chosen_system: str  # "s1" | "s2"
+    chosen_system: str  # "s1" | "s2" | "graph"
     retrieved: list  # list[ScoredChunk] — S1 top-k
     subqueries: list[str]
     hop_index: int  # index of the sub-query currently being retrieved
@@ -92,6 +92,7 @@ def build_graph(
     confidence_threshold: float = ROUTE_CONFIDENCE_THRESHOLD,
     max_hops: int = S2_MAX_HOPS,
     token_ceiling: int = S2_TOKEN_CEILING,
+    graph_retriever: SupportsRetrieve | None = None,
 ):
     """Compile the query graph. Dependencies are closed over; state holds data only."""
 
@@ -122,6 +123,11 @@ def build_graph(
         }
 
     def after_route(state: GraphState) -> str:
+        # The graph route is reachable only when a graph retriever was injected
+        # (gated to multi-hop corpora by the caller). Off-corpus graph decisions
+        # fall back to s1. Confidence still escalates complex/low-confidence to S2.
+        if state["route"] == "graph" and graph_retriever is not None:
+            return "graph_retrieve"
         # Confidence is consumed, not decorative (spec): low confidence escalates.
         if state["route"] == "complex" or state["confidence"] < confidence_threshold:
             return "decompose"
@@ -161,6 +167,28 @@ def build_graph(
         return {
             "final": final,
             "tokens_used": state["tokens_used"] + res.input_tokens + res.output_tokens,
+        }
+
+    # ---------------------------------------------------------------- graph route
+    def graph_retrieve_node(state: GraphState) -> dict:
+        t0 = time.perf_counter()
+        chunks = graph_retriever.retrieve(state["query"])
+        recorder.emit(
+            "graph_retrieve",
+            {"query": state["query"], "chunks": _chunk_payload(chunks)},
+            duration_ms=(time.perf_counter() - t0) * 1000,
+        )
+        # Reuse the S2 synthesis path: one hop record, then synthesize.
+        record = {
+            "subquery": state["query"],
+            "original": state["query"],
+            "chunks": chunks,
+            "verdict": "sufficient",
+        }
+        return {
+            "retrieved": chunks,
+            "hop_records": [record],
+            "chosen_system": "graph",
         }
 
     # ---------------------------------------------------------------- System-2
@@ -383,6 +411,7 @@ def build_graph(
     builder.add_node("route", route_node)
     builder.add_node("s1_retrieve", s1_retrieve_node)
     builder.add_node("s1_answer", s1_answer_node)
+    builder.add_node("graph_retrieve", graph_retrieve_node)
     builder.add_node("decompose", decompose_node)
     builder.add_node("retrieve_hop", retrieve_hop_node)
     builder.add_node("grade", grade_node)
@@ -396,10 +425,17 @@ def build_graph(
         {"route": "route", "s1_retrieve": "s1_retrieve", "decompose": "decompose"},
     )
     builder.add_conditional_edges(
-        "route", after_route, {"s1_retrieve": "s1_retrieve", "decompose": "decompose"}
+        "route",
+        after_route,
+        {
+            "s1_retrieve": "s1_retrieve",
+            "decompose": "decompose",
+            "graph_retrieve": "graph_retrieve",
+        },
     )
     builder.add_edge("s1_retrieve", "s1_answer")
     builder.add_edge("s1_answer", END)
+    builder.add_edge("graph_retrieve", "synthesize")
     builder.add_conditional_edges(
         "decompose", after_decompose, {"retrieve_hop": "retrieve_hop", "synthesize": "synthesize"}
     )

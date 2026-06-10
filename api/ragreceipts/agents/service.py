@@ -29,7 +29,7 @@ type CoreOrFactory = SupportsRetrieve | Callable[[TraceRecorder], SupportsRetrie
 @dataclass(frozen=True)
 class GraphResult:
     final: FinalAnswer
-    system: str  # "s1" | "s2"
+    system: str  # "s1" | "s2" | "graph"
     trace_id: str
     tokens_used: int
     hops_used: int  # 0 on the S1 path
@@ -56,6 +56,7 @@ def run_query(
     store: TraceStore,
     config: PipelineConfig,
     trace_id: str | None = None,
+    graph_retriever: SupportsRetrieve | None = None,
 ) -> GraphResult:
     trace_id = trace_id or uuid.uuid4().hex
     recorder = TraceRecorder(store, trace_id)
@@ -66,10 +67,14 @@ def run_query(
         claude=claude,
         recorder=recorder,
         route_mode=config.query.route_mode,
+        graph_retriever=graph_retriever,
     )
     out = graph.invoke(initial_state(query), config={"recursion_limit": 50})
     system = out.get("chosen_system", "s1")
-    retrieved = out["retrieved"] if system == "s1" else union_of_hops(out["hop_records"])
+    if system == "s2":
+        retrieved = union_of_hops(out["hop_records"])
+    else:  # "s1" or "graph": top-k is the single retrieval
+        retrieved = out["retrieved"]
     return GraphResult(
         final=out["final"],
         system=system,
@@ -81,7 +86,8 @@ def run_query(
 
 
 def route_counts(results: Iterable[GraphResult]) -> dict[str, int]:
-    """Receipt route-distribution stats: {"n_s1": ..., "n_s2": ...}."""
+    """Receipt route-distribution stats: {"n_s1": ..., "n_s2": ..., "n_graph": ...}."""
     rs = list(results)
     n_s2 = sum(1 for r in rs if r.system == "s2")
-    return {"n_s1": len(rs) - n_s2, "n_s2": n_s2}
+    n_graph = sum(1 for r in rs if r.system == "graph")
+    return {"n_s1": len(rs) - n_s2 - n_graph, "n_s2": n_s2, "n_graph": n_graph}

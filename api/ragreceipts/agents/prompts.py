@@ -10,7 +10,7 @@ from collections.abc import Sequence
 
 from ragreceipts.types import ScoredChunk
 
-PROMPTS_VERSION = "2026-06-10.c1"
+PROMPTS_VERSION = "2026-06-11.p2"
 
 # ---------------------------------------------------------------- route
 ROUTE_SYSTEM = """\
@@ -22,6 +22,12 @@ one lookup.
 - "complex": requires combining evidence from multiple passages — multi-hop \
 reasoning, comparisons between entities, or chains like "the director of the \
 film that won X".
+- "graph": a multi-hop question whose hops are ENTITY-LINKING — the answer is \
+found by following named-entity relationships across passages (e.g. "the \
+spouse of the founder of the company that makes X", "which river runs through \
+the birthplace of Y"). Prefer "graph" over "complex" only when the chain is a \
+walk over entity relations that a knowledge graph would capture directly; \
+otherwise prefer "complex".
 
 Also report your confidence in this classification as a number between 0.0 and
 1.0. Be honest about uncertainty: if the question is ambiguous or could go either

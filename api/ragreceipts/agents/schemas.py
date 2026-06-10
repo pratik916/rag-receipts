@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 
 class RouteDecision(BaseModel):
-    route: Literal["simple", "complex"]
+    route: Literal["simple", "complex", "graph"]
     confidence: float = Field(ge=0.0, le=1.0)
 
 

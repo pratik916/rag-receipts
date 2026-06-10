@@ -142,5 +142,9 @@ def test_route_counts():
     assert route_counts([fake_result("s1"), fake_result("s2"), fake_result("s2")]) == {
         "n_s1": 1,
         "n_s2": 2,
+        "n_graph": 0,
     }
-    assert route_counts([]) == {"n_s1": 0, "n_s2": 0}
+    assert route_counts(
+        [fake_result("s1"), fake_result("graph"), fake_result("s2"), fake_result("graph")]
+    ) == {"n_s1": 1, "n_s2": 1, "n_graph": 2}
+    assert route_counts([]) == {"n_s1": 0, "n_s2": 0, "n_graph": 0}
