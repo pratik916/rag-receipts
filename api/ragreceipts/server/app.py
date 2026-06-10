@@ -14,8 +14,9 @@ from __future__ import annotations
 import os
 from collections.abc import Callable
 from contextlib import asynccontextmanager
+from dataclasses import asdict
 
-from fastapi import APIRouter, Depends, FastAPI, Request
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from ragreceipts.server import models as m
@@ -56,6 +57,35 @@ def health(deps: AppDeps = Depends(get_deps)) -> m.HealthResponse:
         qdrant_ok=qdrant_ok,
         missing_env_vars=missing,
         testing_mode=deps.testing_mode,
+    )
+
+
+@router.post("/query", response_model=m.QueryResponse)
+def post_query(req: m.QueryRequest, deps: AppDeps = Depends(get_deps)) -> m.QueryResponse:
+    if deps.query_runner is None:
+        missing = ", ".join(_missing_env_vars(deps))
+        raise HTTPException(503, detail=f"query unavailable; missing env vars: {missing}")
+    if not (deps.paths.corpora_dir / req.corpus_id / "manifest.json").exists():
+        raise HTTPException(404, detail=f"unknown corpus: {req.corpus_id}")
+    result = deps.query_runner.run(query=req.query, corpus_id=req.corpus_id, preset=req.preset)
+    return m.QueryResponse(
+        answer=result.answer,
+        abstained=result.abstained,
+        route=result.route,
+        degraded=result.degraded,
+        citations=[m.CitationModel(**asdict(c)) for c in result.citations],
+        trace_id=result.trace_id,
+    )
+
+
+@router.get("/traces/{trace_id}", response_model=m.TraceResponse)
+def get_trace(trace_id: str, deps: AppDeps = Depends(get_deps)) -> m.TraceResponse:
+    events = deps.trace_store.get(trace_id)
+    if not events:
+        raise HTTPException(404, detail=f"unknown trace: {trace_id}")
+    return m.TraceResponse(
+        trace_id=trace_id,
+        events=[m.TraceEventModel(**asdict(e)) for e in events],
     )
 
 

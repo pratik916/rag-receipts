@@ -1,0 +1,19 @@
+{
+  "corpus_id": "fixture-corpus",
+  "chunks": [
+    {"doc_id": "geo-001", "passage_id": "geo-001", "position": 0,
+     "text": "Paris is the capital and most populous city of France, on the river Seine."},
+    {"doc_id": "geo-001", "passage_id": "geo-001", "position": 1,
+     "text": "France is a country in Western Europe; its capital city is Paris."},
+    {"doc_id": "geo-002", "passage_id": "geo-002", "position": 0,
+     "text": "Berlin is the capital of Germany and its largest city."},
+    {"doc_id": "geo-003", "passage_id": "geo-003", "position": 0,
+     "text": "The Seine is a river in northern France flowing through Paris."},
+    {"doc_id": "geo-004", "passage_id": "geo-004", "position": 0,
+     "text": "Madrid is the capital of Spain, located on the Manzanares river."},
+    {"doc_id": "geo-005", "passage_id": "geo-005", "position": 0,
+     "text": "Mont Blanc is the highest mountain in the Alps, on the French-Italian border."},
+    {"doc_id": "geo-006", "passage_id": "geo-006", "position": 0,
+     "text": "Rome is the capital of Italy, on the river Tiber."}
+  ]
+}

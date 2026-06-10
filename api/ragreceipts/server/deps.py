@@ -118,13 +118,18 @@ def build_deps() -> AppDeps:
 
     trace_store = TraceStore(paths.traces_db)
     job_runner = JobRunner(paths.jobs_db)
+    query_runner = None
+    if qdrant is not None and all(v.configured for v in vendors):
+        from ragreceipts.server.pipeline import build_real_query_runner
+
+        query_runner = build_real_query_runner(paths=paths, qdrant=qdrant, trace_store=trace_store)
     return AppDeps(
         paths=paths,
         vendors=vendors,
         qdrant=qdrant,
         trace_store=trace_store,
         job_runner=job_runner,
-        query_runner=None,  # wired in Task 5 when all keys + QDRANT_URL are present
+        query_runner=query_runner,  # wired when all keys + QDRANT_URL are present (R7)
         eval_runner=None,  # wired in Task 7 when all keys + QDRANT_URL are present
         ingest_sink=None,  # wired in Task 13 when all keys + QDRANT_URL are present
         testing_mode=False,
