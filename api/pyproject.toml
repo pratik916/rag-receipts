@@ -11,6 +11,9 @@ dependencies = [
     "voyageai>=0.4,<0.5",
 ]
 
+[project.scripts]
+ragreceipts = "ragreceipts.cli:main"
+
 [dependency-groups]
 dev = ["pytest>=9.0", "ruff>=0.15"]
 
