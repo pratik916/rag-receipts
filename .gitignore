@@ -25,3 +25,5 @@ node_modules/
 
 # internal planning scaffolding (design specs, implementation plans, brainstorm mockups) — local-only
 docs/superpowers/
+# internal deep-research / planning artifacts generated during design — local-only
+docs/research/

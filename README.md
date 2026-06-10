@@ -127,5 +127,3 @@ by an in-process worker thread.
   independent +2–3pp figure is for LLM-prefix contextualization, a different technique.
 - LLM nondeterminism, model IDs, prompt versions, pricing-table version, and corpus
   manifest hashes are recorded in every receipt.
-
-Research grounding: `docs/research/2026-06-10-deep-research-advanced-rag.json`
