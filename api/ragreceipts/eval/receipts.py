@@ -40,6 +40,13 @@ NQ_CORPUS_SCALE_NOTE = (
     "open-corpus retrieval behind published numbers."
 )
 
+# G3: the graph anchor's two-sided caveat (contracts addendum, verbatim obligations).
+GRAPH_ANCHOR_NOTE = (
+    "author-reported multi-hop gain; an independent enterprise replication saw only "
+    "slight gains. Direction-match only, never magnitude reproduction. Graphs are NOT "
+    "expected to help simple-fact (nq) queries; the nq cell documents the non-help side."
+)
+
 
 @dataclass(frozen=True)
 class PublishedAnchor:
@@ -173,6 +180,28 @@ ANCHOR_SPECS: dict[str, list[AnchorSpec]] = {
                 "caveat as the Recall@5 anchor - direction-match only, never magnitude."
             ),
         ),
+    ],
+    # Graph mode (G3): the "when do graphs help" receipt's first half. Two-sided
+    # by construction — the note discloses the soft replication AND that graphs are
+    # NOT expected to help simple-fact (nq) queries. build_anchor appends the
+    # nq-dev-300 corpus-scale caveat on nq runs (R11).
+    "graph": [
+        AnchorSpec(
+            source="HippoRAG 2 (arXiv 2502.14802)",
+            published_value=0.07,
+            metric="recall_at_5",
+            baseline_preset="rerank",
+            note=GRAPH_ANCHOR_NOTE,
+        )
+    ],
+    "graph-rrf": [
+        AnchorSpec(
+            source="HippoRAG 2 (arXiv 2502.14802)",
+            published_value=0.07,
+            metric="recall_at_5",
+            baseline_preset="rerank",
+            note=GRAPH_ANCHOR_NOTE,
+        )
     ],
     "router-on": [
         AnchorSpec(
