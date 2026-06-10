@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "nondeterminism_note": "LLM calls are nondeterministic even at temperature=0: answer-dependent metrics (em, f1, ragas_*) can shift slightly between identical runs. Retrieval metrics (recall_at_5, mrr_at_3) are deterministic for a fixed index. Treat small answer-metric deltas as noise, not findings.",
+  "receipt": {
+    "run_id": "fixture-committed-contextual",
+    "corpus_id": "fixture-corpus",
+    "preset": "contextual",
+    "config": {"name": "contextual", "ingest": {"contextual": true, "chunk_size": 512, "chunk_overlap": 64}, "query": {"bm25": true, "dense": true, "rerank": false, "route_mode": "force_s1", "top_k_fuse": 50, "top_k_final": 5}},
+    "index_hashes": {"dense_contextual": "sha256:fixture-ctx", "sparse": "sha256:fixture-sparse"},
+    "models": {"router": "claude-haiku-4-5-20251001", "synth": "claude-sonnet-4-6", "judge": "claude-sonnet-4-6", "rerank": "rerank-v4.0-pro", "embed": "voyage-context-3"},
+    "pricing_table_version": "2026-06-10",
+    "prompts_version": "n/a",
+    "n_total": 15,
+    "n_failed": 0,
+    "n_abstained": 1,
+    "metrics": {"recall_at_5": 0.66, "mrr_at_3": 0.52, "em": 0.33, "f1": 0.47, "ragas_faithfulness": 0.76, "ragas_answer_relevancy": 0.72, "latency_p50_ms": 860, "latency_p95_ms": 1880, "usd_per_query": 0.008},
+    "per_query": [{"query_id": "q-001", "retrieved_chunk_ids": ["geo-001:0", "geo-001:1"], "latency_ms": 845, "usd": 0.008, "flags": {}}],
+    "anchors": [{"source": "Anthropic contextual-retrieval post (Sep 2024): +2-3pp recall from contextualization", "published_value": 0.025, "measured_value": 0.03, "direction_match": true, "note": "The independent +2-3pp figure is for LLM-prefix contextualization; this cell measures voyage-context-3 document-context embeddings against the SAME model embedding isolated chunks - a different technique, direction-match only. Cross-index cell: contextual queries the dense_contextual named vector while dense-rrf queries dense_isolated, so the adjacent ladder cells were measured against different index hashes."}]
+  }
+}

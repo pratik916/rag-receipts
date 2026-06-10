@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "nondeterminism_note": "LLM calls are nondeterministic even at temperature=0: answer-dependent metrics (em, f1, ragas_*) can shift slightly between identical runs. Retrieval metrics (recall_at_5, mrr_at_3) are deterministic for a fixed index. Treat small answer-metric deltas as noise, not findings.",
+  "receipt": {
+    "run_id": "fixture-committed-bm25-only",
+    "corpus_id": "fixture-corpus",
+    "preset": "bm25-only",
+    "config": {"name": "bm25-only", "ingest": {"contextual": false, "chunk_size": 512, "chunk_overlap": 64}, "query": {"bm25": true, "dense": false, "rerank": false, "route_mode": "force_s1", "top_k_fuse": 50, "top_k_final": 5}},
+    "index_hashes": {"sparse": "sha256:fixture-sparse"},
+    "models": {"router": "claude-haiku-4-5-20251001", "synth": "claude-sonnet-4-6", "judge": "claude-sonnet-4-6", "rerank": "rerank-v4.0-pro", "embed": "voyage-context-3"},
+    "pricing_table_version": "2026-06-10",
+    "prompts_version": "n/a",
+    "n_total": 15,
+    "n_failed": 0,
+    "n_abstained": 1,
+    "metrics": {"recall_at_5": 0.55, "mrr_at_3": 0.41, "em": 0.27, "f1": 0.39, "ragas_faithfulness": 0.71, "ragas_answer_relevancy": 0.68, "latency_p50_ms": 740, "latency_p95_ms": 1620, "usd_per_query": 0.006},
+    "per_query": [{"query_id": "q-001", "retrieved_chunk_ids": ["geo-001:0", "geo-003:0"], "latency_ms": 712, "usd": 0.005, "flags": {}}],
+    "anchors": [{"source": "arXiv 2604.01733 Table I (BM25 vs dense, financial domain)", "published_value": 0.644, "measured_value": 0.55, "direction_match": true, "note": "T2-RAGBench is financial-domain; this corpus is not. Cross-domain anchors claim direction-match only, never magnitude reproduction. Source is a single non-peer-reviewed Apr 2026 preprint."}]
+  }
+}

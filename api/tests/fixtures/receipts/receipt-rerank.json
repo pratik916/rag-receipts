@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "nondeterminism_note": "LLM calls are nondeterministic even at temperature=0: answer-dependent metrics (em, f1, ragas_*) can shift slightly between identical runs. Retrieval metrics (recall_at_5, mrr_at_3) are deterministic for a fixed index. Treat small answer-metric deltas as noise, not findings.",
+  "receipt": {
+    "run_id": "fixture-committed-rerank",
+    "corpus_id": "fixture-corpus",
+    "preset": "rerank",
+    "config": {"name": "rerank", "ingest": {"contextual": true, "chunk_size": 512, "chunk_overlap": 64}, "query": {"bm25": true, "dense": true, "rerank": true, "route_mode": "force_s1", "top_k_fuse": 50, "top_k_final": 5}},
+    "index_hashes": {"dense_contextual": "sha256:fixture-ctx", "sparse": "sha256:fixture-sparse"},
+    "models": {"router": "claude-haiku-4-5-20251001", "synth": "claude-sonnet-4-6", "judge": "claude-sonnet-4-6", "rerank": "rerank-v4.0-pro", "embed": "voyage-context-3"},
+    "pricing_table_version": "2026-06-10",
+    "prompts_version": "n/a",
+    "n_total": 15,
+    "n_failed": 0,
+    "n_abstained": 0,
+    "metrics": {"recall_at_5": 0.78, "mrr_at_3": 0.62, "em": 0.4, "f1": 0.55, "ragas_faithfulness": 0.81, "ragas_answer_relevancy": 0.77, "latency_p50_ms": 980, "latency_p95_ms": 2140, "usd_per_query": 0.012},
+    "per_query": [{"query_id": "q-001", "retrieved_chunk_ids": ["geo-001:0", "geo-001:1"], "latency_ms": 990, "usd": 0.012, "flags": {}}],
+    "anchors": [{"source": "arXiv 2604.01733 Table I (rerank vs hybrid RRF: +12.1pp Recall@5)", "published_value": 0.121, "measured_value": 0.23, "direction_match": true, "note": "Published delta measured with Cohere Rerank v4.0 Pro on T2-RAGBench (financial). Our corpus differs in domain; direction-match only. Reranking being the largest single gain is the claim under test, not the magnitude."}]
+  }
+}

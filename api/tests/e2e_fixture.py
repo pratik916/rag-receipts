@@ -319,6 +319,11 @@ def build_testing_deps() -> AppDeps:
     paths.ensure()
     _write_fixture_manifest(paths)
     trace_store = InMemoryTraceStore()
+    # Seed a local run so the Ablation Lab committed/local toggle has both sources.
+    FixtureEvalRunner(paths).run(
+        corpus_id=FIXTURE_CORPUS_ID, preset="dense-rrf", slice_name="smoke",
+        spend_cap_usd=1.0, emit=lambda message, progress: None,
+    )
     return AppDeps(
         paths=paths,
         vendors=[VendorCapability(name, True, env) for name, env in VENDOR_ENV_VARS.items()],
