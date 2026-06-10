@@ -3,7 +3,9 @@ name = "ragreceipts"
 version = "0.1.0"
 description = "Adaptive RAG engine with measured ablation receipts"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "datasets>=4.8.4,<5",
+]
 
 [dependency-groups]
 dev = ["pytest>=9.0", "ruff>=0.15"]
