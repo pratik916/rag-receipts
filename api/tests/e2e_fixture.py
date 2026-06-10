@@ -310,6 +310,28 @@ class FixtureEvalRunner:
         return run_id
 
 
+class TestingIngestSink:
+    """Offline IngestSink: counts chunks with the 512-token (~2048-char) window and
+    writes deterministic fake index hashes — no Qdrant/bm25s writes. Exercises the BYO
+    reader/split/manifest path end-to-end without vendors."""
+
+    def write_corpus(self, *, corpus_id, docs, emit):
+        n_chunks = sum(max(1, len(d.text) // 2048) for d in docs)
+        emit(f"indexed {len(docs)} docs / {n_chunks} chunks (testing sink)", 0.9)
+        return {
+            "corpus_id": corpus_id,
+            "dataset": {"name": "byo", "hf_id": None, "split": None, "revision": None},
+            "chunking": {"chunk_size": 512, "chunk_overlap": 64},
+            "embed_model": EMBED_MODEL,
+            "index_hashes": {"dense_contextual": "sha256:testing",
+                             "dense_isolated": "sha256:testing",
+                             "sparse": "sha256:testing"},
+            "tokenizer_artifact": "testing",
+            "n_docs": len(docs), "n_chunks": n_chunks, "n_queries": 0,
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+
+
 def build_testing_deps() -> AppDeps:
     data_dir = Path(
         os.environ.get("RAGRECEIPTS_DATA_DIR", tempfile.mkdtemp(prefix="ragreceipts-testing-"))
@@ -336,6 +358,6 @@ def build_testing_deps() -> AppDeps:
             trace_store,
         ),
         eval_runner=FixtureEvalRunner(paths),
-        ingest_sink=None,  # TestingIngestSink wired in Task 14
+        ingest_sink=TestingIngestSink(),
         testing_mode=True,
     )

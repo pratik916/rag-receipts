@@ -44,3 +44,25 @@ def test_testing_degraded_path(tmp_path, monkeypatch):
             },
         ).json()
         assert body["degraded"] == ["rerank-skipped"]
+
+
+def test_testing_ingest_round_trip(tmp_path, monkeypatch):
+    import time
+
+    with make_client(tmp_path, monkeypatch) as client:
+        r = client.post(
+            "/corpora/ingest",
+            data={"corpus_id": "uploaded-docs"},
+            files=[("files", ("note.txt", b"some text", "text/plain"))],
+        )
+        assert r.status_code == 200, r.text
+        job_id = r.json()["job_id"]
+        deadline = time.time() + 15
+        while time.time() < deadline:
+            status = client.get(f"/jobs/{job_id}").json()["status"]
+            if status in ("succeeded", "failed"):
+                break
+            time.sleep(0.05)
+        assert status == "succeeded"
+        ids = [c["corpus_id"] for c in client.get("/corpora").json()["corpora"]]
+        assert "uploaded-docs" in ids

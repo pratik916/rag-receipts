@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import UploadForm from "@/components/UploadForm";
 import { api } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 
@@ -35,6 +36,7 @@ export default function Corpora() {
   return (
     <>
       <h1 style={{ fontSize: 20 }}>Corpora</h1>
+      <UploadForm onDone={reload} />
       {corpora.length === 0 && (
         <p className="muted">No corpora ingested yet.</p>
       )}
