@@ -12,7 +12,12 @@ def test_vendor_env_var_names_are_the_official_sdk_names():
 
 
 def test_app_paths_layout(tmp_path):
-    paths = AppPaths(data_dir=tmp_path / "data", receipts_committed_dir=tmp_path / "receipts")
+    paths = AppPaths(
+        data_dir=tmp_path / "data",
+        receipts_committed_dir=tmp_path / "receipts",
+        demo_corpus_dir=tmp_path / "demo" / "corpus",
+        demo_examples_dir=tmp_path / "demo" / "examples",
+    )
     paths.ensure()
     assert paths.corpora_dir == tmp_path / "data" / "corpora"
     assert paths.receipts_local_dir == tmp_path / "data" / "receipts-local"

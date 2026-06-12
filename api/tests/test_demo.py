@@ -146,3 +146,54 @@ def test_demo_ledger_check_budget_raises_when_over(tmp_path):
 def test_demo_ledger_check_budget_passes_when_no_spend(tmp_path):
     ledger = _make_ledger(tmp_path, daily_budget_usd=2.0)
     ledger.check_budget(0.02)  # no prior spend → 0.0 + 0.02 < 2.0 → OK
+
+
+# ── AppPaths + AppDeps wiring ─────────────────────────────────────────────────
+
+
+def test_app_paths_from_env_has_demo_dirs(tmp_path, monkeypatch):
+    monkeypatch.setenv("RAGRECEIPTS_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("RAGRECEIPTS_RECEIPTS_DIR", str(tmp_path / "receipts"))
+    monkeypatch.setenv("RAGRECEIPTS_DEMO_CORPUS_DIR", str(tmp_path / "demo" / "corpus"))
+    monkeypatch.setenv("RAGRECEIPTS_DEMO_EXAMPLES_DIR", str(tmp_path / "demo" / "examples"))
+    from ragreceipts.server.deps import AppPaths
+
+    paths = AppPaths.from_env()
+    assert paths.demo_corpus_dir == (tmp_path / "demo" / "corpus").resolve()
+    assert paths.demo_examples_dir == (tmp_path / "demo" / "examples").resolve()
+    assert paths.demo_db == paths.data_dir / "demo.sqlite"
+
+
+def test_build_deps_wires_demo_ledger_when_demo_mode_set(tmp_path, monkeypatch):
+    monkeypatch.setenv("DEMO_MODE", "1")
+    monkeypatch.setenv("RAGRECEIPTS_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("RAGRECEIPTS_RECEIPTS_DIR", str(tmp_path / "receipts"))
+    monkeypatch.setenv("RAGRECEIPTS_DEMO_CORPUS_DIR", str(tmp_path / "demo" / "corpus"))
+    monkeypatch.setenv("RAGRECEIPTS_DEMO_EXAMPLES_DIR", str(tmp_path / "demo" / "examples"))
+    monkeypatch.delenv("QDRANT_URL", raising=False)
+    monkeypatch.delenv("VOYAGE_API_KEY", raising=False)
+    monkeypatch.delenv("COHERE_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("TESTING", raising=False)
+    from ragreceipts.server.deps import build_deps
+
+    deps = build_deps()
+    assert deps.demo_ledger is not None
+    assert deps.demo_ledger.config.demo_corpus_id == "demo"
+
+
+def test_build_deps_demo_ledger_is_none_when_demo_mode_unset(tmp_path, monkeypatch):
+    monkeypatch.delenv("DEMO_MODE", raising=False)
+    monkeypatch.setenv("RAGRECEIPTS_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("RAGRECEIPTS_RECEIPTS_DIR", str(tmp_path / "receipts"))
+    monkeypatch.setenv("RAGRECEIPTS_DEMO_CORPUS_DIR", str(tmp_path / "demo" / "corpus"))
+    monkeypatch.setenv("RAGRECEIPTS_DEMO_EXAMPLES_DIR", str(tmp_path / "demo" / "examples"))
+    monkeypatch.delenv("QDRANT_URL", raising=False)
+    monkeypatch.delenv("VOYAGE_API_KEY", raising=False)
+    monkeypatch.delenv("COHERE_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("TESTING", raising=False)
+    from ragreceipts.server.deps import build_deps
+
+    deps = build_deps()
+    assert deps.demo_ledger is None

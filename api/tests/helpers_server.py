@@ -10,7 +10,12 @@ from tests.fakes import InMemoryTraceStore
 
 
 def make_test_deps(tmp_path: Path, *, configured: bool = False) -> AppDeps:
-    paths = AppPaths(data_dir=tmp_path / "data", receipts_committed_dir=tmp_path / "receipts")
+    paths = AppPaths(
+        data_dir=tmp_path / "data",
+        receipts_committed_dir=tmp_path / "receipts",
+        demo_corpus_dir=tmp_path / "demo" / "corpus",
+        demo_examples_dir=tmp_path / "demo" / "examples",
+    )
     paths.ensure()
     return AppDeps(
         paths=paths,

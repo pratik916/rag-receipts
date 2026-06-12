@@ -9,7 +9,10 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from ragreceipts.server.demo import DemoLedger
 
 from ragreceipts.server.jobs import JobRunner
 from ragreceipts.traces.models import TraceEvent
@@ -39,6 +42,8 @@ class VendorCapability:
 class AppPaths:
     data_dir: Path
     receipts_committed_dir: Path
+    demo_corpus_dir: Path
+    demo_examples_dir: Path
 
     @property
     def corpora_dir(self) -> Path:
@@ -60,6 +65,10 @@ class AppPaths:
     def traces_db(self) -> Path:
         return self.data_dir / "traces.sqlite"
 
+    @property
+    def demo_db(self) -> Path:
+        return self.data_dir / "demo.sqlite"
+
     def ensure(self) -> None:
         for d in (self.data_dir, self.corpora_dir, self.receipts_local_dir, self.uploads_dir):
             d.mkdir(parents=True, exist_ok=True)
@@ -70,6 +79,12 @@ class AppPaths:
             data_dir=Path(os.environ.get("RAGRECEIPTS_DATA_DIR", "../data")).resolve(),
             receipts_committed_dir=Path(
                 os.environ.get("RAGRECEIPTS_RECEIPTS_DIR", "../receipts")
+            ).resolve(),
+            demo_corpus_dir=Path(
+                os.environ.get("RAGRECEIPTS_DEMO_CORPUS_DIR", "../demo/corpus")
+            ).resolve(),
+            demo_examples_dir=Path(
+                os.environ.get("RAGRECEIPTS_DEMO_EXAMPLES_DIR", "../demo/examples")
             ).resolve(),
         )
 
@@ -85,6 +100,7 @@ class AppDeps:
     eval_runner: object | None  # server.evalruns.EvalRunner (Task 7)
     ingest_sink: object | None  # server.ingest_byo.IngestSink (Task 13, built last)
     testing_mode: bool
+    demo_ledger: DemoLedger | None = None
 
 
 def build_deps() -> AppDeps:
@@ -129,6 +145,10 @@ def build_deps() -> AppDeps:
         query_runner = build_real_query_runner(paths=paths, qdrant=qdrant, trace_store=trace_store)
         eval_runner = RealEvalRunner(data_dir=paths.data_dir)
         ingest_sink = build_real_ingest_sink(paths=paths, qdrant=qdrant)
+    from ragreceipts.server.demo import DemoConfig, DemoLedger
+
+    demo_cfg = DemoConfig.from_env()
+    demo_ledger = DemoLedger(demo_cfg, paths.demo_db) if demo_cfg is not None else None
     return AppDeps(
         paths=paths,
         vendors=vendors,
@@ -139,4 +159,5 @@ def build_deps() -> AppDeps:
         eval_runner=eval_runner,  # wired when all keys + QDRANT_URL are present (R7)
         ingest_sink=ingest_sink,  # wired when all keys + QDRANT_URL are present (R7)
         testing_mode=False,
+        demo_ledger=demo_ledger,
     )

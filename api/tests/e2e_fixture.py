@@ -378,7 +378,16 @@ def build_testing_deps() -> AppDeps:
         os.environ.get("RAGRECEIPTS_DATA_DIR", tempfile.mkdtemp(prefix="ragreceipts-testing-"))
     )
     receipts_dir = Path(os.environ.get("RAGRECEIPTS_RECEIPTS_DIR", "../receipts")).resolve()
-    paths = AppPaths(data_dir=data_dir, receipts_committed_dir=receipts_dir)
+    paths = AppPaths(
+        data_dir=data_dir,
+        receipts_committed_dir=receipts_dir,
+        demo_corpus_dir=Path(
+            os.environ.get("RAGRECEIPTS_DEMO_CORPUS_DIR", "../demo/corpus")
+        ).resolve(),
+        demo_examples_dir=Path(
+            os.environ.get("RAGRECEIPTS_DEMO_EXAMPLES_DIR", "../demo/examples")
+        ).resolve(),
+    )
     paths.ensure()
     _write_fixture_manifest(paths)
     trace_store = InMemoryTraceStore()
