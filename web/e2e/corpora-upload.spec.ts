@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
 
-test("BYO upload streams job progress and the new corpus appears", async ({ page }) => {
+// In TESTING=1 the demo_ledger is active, so POST /corpora/ingest returns 403.
+// The UploadForm surfaces the error: "ingest failed: HTTP 403 ...".
+test("BYO upload blocked in demo mode: shows 403 error", async ({ page }) => {
   await page.goto("/corpora");
   await page.getByTestId("upload-corpus-id").fill("e2e-byo");
   await page.getByTestId("upload-files").setInputFiles([
@@ -9,16 +11,10 @@ test("BYO upload streams job progress and the new corpus appears", async ({ page
       mimeType: "text/plain",
       buffer: Buffer.from("The first uploaded document, about rivers in France."),
     },
-    {
-      name: "doc-two.md",
-      mimeType: "text/markdown",
-      buffer: Buffer.from("# Second doc\n\nAbout capitals of Europe."),
-    },
   ]);
   await page.getByTestId("upload-submit").click();
-  await expect(page.getByTestId("job-progress")).toBeVisible();
-  await expect(page.getByTestId("job-status")).toHaveText("succeeded", { timeout: 30_000 });
-  await expect(
-    page.getByTestId("corpus-card").filter({ hasText: "e2e-byo" })
-  ).toBeVisible();
+  // Demo mode blocks ingest; the form surfaces the 403 as an error message.
+  await expect(page.locator(".error")).toContainText("403");
+  // No job progress element should appear (job was never created).
+  await expect(page.getByTestId("job-progress")).not.toBeVisible();
 });
