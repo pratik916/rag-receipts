@@ -57,7 +57,10 @@ def run_query(
     config: PipelineConfig,
     trace_id: str | None = None,
     graph_retriever: SupportsRetrieve | None = None,
+    token_ceiling: int | None = None,
 ) -> GraphResult:
+    from ragreceipts.constants import S2_TOKEN_CEILING
+
     trace_id = trace_id or uuid.uuid4().hex
     recorder = TraceRecorder(store, trace_id)
     if not hasattr(core, "retrieve"):
@@ -68,6 +71,7 @@ def run_query(
         recorder=recorder,
         route_mode=config.query.route_mode,
         graph_retriever=graph_retriever,
+        token_ceiling=token_ceiling if token_ceiling is not None else S2_TOKEN_CEILING,
     )
     out = graph.invoke(initial_state(query), config={"recursion_limit": 50})
     system = out.get("chosen_system", "s1")

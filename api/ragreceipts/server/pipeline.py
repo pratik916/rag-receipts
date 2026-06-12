@@ -30,7 +30,9 @@ class QueryResult:
 
 
 class QueryRunner(Protocol):
-    def run(self, *, query: str, corpus_id: str, preset: str) -> QueryResult: ...
+    def run(
+        self, *, query: str, corpus_id: str, preset: str, token_ceiling: int | None = None
+    ) -> QueryResult: ...
 
 
 def _collect_degraded(events) -> list[str]:
@@ -78,11 +80,18 @@ class RealQueryRunner:
         self._core_factory = core_factory
         self._run_query = run_query_fn
 
-    def run(self, *, query: str, corpus_id: str, preset: str) -> QueryResult:
+    def run(
+        self, *, query: str, corpus_id: str, preset: str, token_ceiling: int | None = None
+    ) -> QueryResult:
         config = PRESETS[preset]
         core = self._core_factory(config, corpus_id, self._data_dir)
         result = self._run_query(
-            query=query, core=core, claude=self._claude, store=self._trace_store, config=config
+            query=query,
+            core=core,
+            claude=self._claude,
+            store=self._trace_store,
+            config=config,
+            token_ceiling=token_ceiling,
         )
         citations: list[Citation] = []
         for n in result.final.citations:

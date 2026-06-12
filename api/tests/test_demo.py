@@ -299,3 +299,107 @@ def test_eval_runs_post_works_without_demo_mode(tmp_path):
             },
         )
     assert response.status_code != 403  # 503 because eval_runner is None
+
+
+# ── /query guardrails ─────────────────────────────────────────────────────────
+
+
+def test_query_corpus_allow_list_returns_403(tmp_path):
+    app = _make_test_app(tmp_path, with_demo=True)
+    with TestClient(app) as client:
+        response = client.post(
+            "/query",
+            json={"query": "hello", "corpus_id": "not-demo", "preset": "bm25-only"},
+        )
+    assert response.status_code == 403
+    assert "demo corpus" in response.json()["detail"]
+
+
+def test_query_correct_corpus_passes_allow_list(tmp_path):
+    app = _make_test_app(tmp_path, with_demo=True)
+    with TestClient(app) as client:
+        response = client.post(
+            "/query",
+            json={"query": "hello", "corpus_id": "demo", "preset": "bm25-only"},
+        )
+    assert response.status_code != 403  # 503 because query_runner is None
+
+
+def test_query_rate_limit_raises_429(tmp_path):
+    paths = AppPaths(
+        data_dir=tmp_path / "data",
+        receipts_committed_dir=tmp_path / "receipts",
+        demo_corpus_dir=tmp_path / "demo" / "corpus",
+        demo_examples_dir=tmp_path / "demo" / "examples",
+    )
+    (tmp_path / "data").mkdir(parents=True, exist_ok=True)
+    config = DemoConfig(
+        daily_budget_usd=99.0,
+        rate_per_min=0,
+        rate_per_day=100,
+        s2_token_ceiling=20_000,
+        demo_corpus_id="demo",
+    )
+    ledger = DemoLedger(config, paths.demo_db)
+    from tests.fakes import InMemoryTraceStore
+
+    deps = AppDeps(
+        paths=paths,
+        vendors=[],
+        qdrant=None,
+        trace_store=InMemoryTraceStore(),
+        job_runner=JobRunner(paths.jobs_db),
+        query_runner=None,
+        eval_runner=None,
+        ingest_sink=None,
+        testing_mode=True,
+        demo_ledger=ledger,
+    )
+    app = create_app(deps_factory=lambda: deps)
+    with TestClient(app) as client:
+        response = client.post(
+            "/query",
+            json={"query": "hello", "corpus_id": "demo", "preset": "bm25-only"},
+        )
+    assert response.status_code == 429
+    assert response.json()["detail"]["reason"] == "rate"
+
+
+def test_query_budget_exhausted_raises_429(tmp_path):
+    paths = AppPaths(
+        data_dir=tmp_path / "data",
+        receipts_committed_dir=tmp_path / "receipts",
+        demo_corpus_dir=tmp_path / "demo" / "corpus",
+        demo_examples_dir=tmp_path / "demo" / "examples",
+    )
+    (tmp_path / "data").mkdir(parents=True, exist_ok=True)
+    config = DemoConfig(
+        daily_budget_usd=0.0,
+        rate_per_min=100,
+        rate_per_day=100,
+        s2_token_ceiling=20_000,
+        demo_corpus_id="demo",
+    )
+    ledger = DemoLedger(config, paths.demo_db)
+    from tests.fakes import InMemoryTraceStore
+
+    deps = AppDeps(
+        paths=paths,
+        vendors=[],
+        qdrant=None,
+        trace_store=InMemoryTraceStore(),
+        job_runner=JobRunner(paths.jobs_db),
+        query_runner=None,
+        eval_runner=None,
+        ingest_sink=None,
+        testing_mode=True,
+        demo_ledger=ledger,
+    )
+    app = create_app(deps_factory=lambda: deps)
+    with TestClient(app) as client:
+        response = client.post(
+            "/query",
+            json={"query": "hello", "corpus_id": "demo", "preset": "bm25-only"},
+        )
+    assert response.status_code == 429
+    assert response.json()["detail"]["reason"] == "budget"

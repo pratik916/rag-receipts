@@ -48,7 +48,7 @@ def test_run_marshals_graph_result_and_trace_degraded_flags(tmp_path):
     )
     seen: dict = {}
 
-    def fake_run_query(*, query, core, claude, store, config):
+    def fake_run_query(*, query, core, claude, store, config, token_ceiling=None):
         seen.update(query=query, core=core, preset=config.name)
         return graph_result
 
