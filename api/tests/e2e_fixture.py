@@ -21,6 +21,7 @@ from qdrant_client import QdrantClient
 
 from ragreceipts.constants import EMBED_MODEL, RERANK_MODEL, ROUTER_MODEL, SYNTH_MODEL
 from ragreceipts.eval.pricing import PRICING_VERSION
+from ragreceipts.server.demo import DemoConfig, DemoLedger
 from ragreceipts.server.deps import VENDOR_ENV_VARS, AppDeps, AppPaths, VendorCapability
 from ragreceipts.server.evalruns import CostEstimate
 from ragreceipts.server.jobs import JobRunner
@@ -410,6 +411,14 @@ def build_testing_deps() -> AppDeps:
         spend_cap_usd=1.0,
         emit=lambda message, progress: None,
     )
+    demo_cfg = DemoConfig(
+        daily_budget_usd=0.10,  # enough headroom for test queries (EST_DEMO_QUERY_USD=0.02)
+        rate_per_min=100,
+        rate_per_day=100,
+        s2_token_ceiling=20_000,
+        demo_corpus_id=FIXTURE_CORPUS_ID,  # must match the fixture corpus
+    )
+    demo_ledger = DemoLedger(demo_cfg, paths.demo_db)
     return AppDeps(
         paths=paths,
         vendors=[VendorCapability(name, True, env) for name, env in VENDOR_ENV_VARS.items()],
@@ -424,4 +433,5 @@ def build_testing_deps() -> AppDeps:
         eval_runner=FixtureEvalRunner(paths),
         ingest_sink=TestingIngestSink(),
         testing_mode=True,
+        demo_ledger=demo_ledger,
     )
