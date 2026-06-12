@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 
 // These tests run against the TESTING=1 server (started by pnpm e2e).
-// The fixture's demo_ledger has daily_budget_usd=0.001, so one query exhausts the budget.
+// The fixture's demo_ledger has daily_budget_usd=0.10 (enough headroom for test queries).
 
 test.describe("DEMO_MODE API guards", () => {
   test("POST /query with wrong corpus returns 403", async ({ request }) => {
