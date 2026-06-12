@@ -5,9 +5,11 @@ from __future__ import annotations
 import json as _json
 import sqlite3
 
+import numpy as np
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from qdrant_client import QdrantClient
 
 from ragreceipts.server.app import create_app
 from ragreceipts.server.demo import DemoConfig, DemoLedger
@@ -463,3 +465,60 @@ def test_demo_examples_works_without_demo_mode(tmp_path):
     with TestClient(app) as client:
         response = client.get("/demo/examples")
     assert response.status_code == 200
+
+
+# ── seed_demo_qdrant unit tests ───────────────────────────────────────────────
+
+
+def _write_fake_corpus(corpus_dir, n_chunks: int = 3, embed_dim: int = 4) -> None:
+    corpus_dir.mkdir(parents=True, exist_ok=True)
+    chunks = [
+        {"chunk_id": f"c{i}", "passage_id": f"p{i}", "text": f"Text {i}"} for i in range(n_chunks)
+    ]
+    import json as _json2
+
+    (corpus_dir / "chunks.jsonl").write_text("\n".join(_json2.dumps(c) for c in chunks))
+    vecs = np.random.rand(n_chunks, embed_dim).astype("float32")
+    np.savez(corpus_dir / "dense_vectors.npz", contextual=vecs, isolated=vecs)
+
+
+def _make_demo_config(corpus_id: str = "demo") -> DemoConfig:
+    return DemoConfig(
+        daily_budget_usd=2.0,
+        rate_per_min=5,
+        rate_per_day=20,
+        s2_token_ceiling=20_000,
+        demo_corpus_id=corpus_id,
+    )
+
+
+def test_seed_demo_qdrant_noop_when_vectors_absent(tmp_path):
+    from ragreceipts.server.demo import seed_demo_qdrant
+
+    qdrant = QdrantClient(":memory:")
+    seed_demo_qdrant(qdrant, tmp_path / "corpus", _make_demo_config())
+    with pytest.raises(Exception):
+        qdrant.get_collection("demo")
+
+
+def test_seed_demo_qdrant_creates_collection(tmp_path):
+    from ragreceipts.server.demo import seed_demo_qdrant
+
+    corpus_dir = tmp_path / "corpus"
+    _write_fake_corpus(corpus_dir, n_chunks=3, embed_dim=4)
+    qdrant = QdrantClient(":memory:")
+    seed_demo_qdrant(qdrant, corpus_dir, _make_demo_config())
+    info = qdrant.get_collection("demo")
+    assert info.points_count == 3
+
+
+def test_seed_demo_qdrant_is_idempotent(tmp_path):
+    from ragreceipts.server.demo import seed_demo_qdrant
+
+    corpus_dir = tmp_path / "corpus"
+    _write_fake_corpus(corpus_dir, n_chunks=3, embed_dim=4)
+    qdrant = QdrantClient(":memory:")
+    seed_demo_qdrant(qdrant, corpus_dir, _make_demo_config())
+    seed_demo_qdrant(qdrant, corpus_dir, _make_demo_config())
+    info = qdrant.get_collection("demo")
+    assert info.points_count == 3  # still 3, not doubled
