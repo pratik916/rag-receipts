@@ -154,8 +154,8 @@ def seed_demo_qdrant(qdrant: Any, demo_corpus_dir: Path, config: DemoConfig) -> 
                 info.points_count,
             )
             return
-    except Exception:
-        pass  # collection does not exist yet — proceed to create
+    except Exception as e:
+        logger.debug("Demo collection %r not found, will create: %s", collection_name, e)
 
     data = np.load(dense_path)
     contextual_vecs = data["contextual"]  # shape (n_chunks, embed_dim)
@@ -169,8 +169,8 @@ def seed_demo_qdrant(qdrant: Any, demo_corpus_dir: Path, config: DemoConfig) -> 
     # Recreate the collection (delete if stale empty collection exists)
     try:
         qdrant.delete_collection(collection_name)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Could not delete stale collection %r (may not exist): %s", collection_name, e)
     qdrant.create_collection(
         collection_name=collection_name,
         vectors_config={
