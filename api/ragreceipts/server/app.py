@@ -23,6 +23,7 @@ from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Requ
 from fastapi.middleware.cors import CORSMiddleware
 
 from ragreceipts.server import models as m
+from ragreceipts.server.demo import EST_DEMO_QUERY_USD, _get_client_ip
 from ragreceipts.server.deps import AppDeps, build_deps
 
 router = APIRouter()
@@ -64,13 +65,31 @@ def health(deps: AppDeps = Depends(get_deps)) -> m.HealthResponse:
 
 
 @router.post("/query", response_model=m.QueryResponse)
-def post_query(req: m.QueryRequest, deps: AppDeps = Depends(get_deps)) -> m.QueryResponse:
+def post_query(
+    req: m.QueryRequest, request: Request, deps: AppDeps = Depends(get_deps)
+) -> m.QueryResponse:
+    ip = "unknown"
+    if deps.demo_ledger is not None:
+        ip = _get_client_ip(request)
+        if req.corpus_id != deps.demo_ledger.config.demo_corpus_id:
+            raise HTTPException(
+                403, detail="query is limited to the demo corpus in the public demo"
+            )
+        deps.demo_ledger.check_rate(ip)
+        deps.demo_ledger.check_budget(EST_DEMO_QUERY_USD)
     if deps.query_runner is None:
         missing = ", ".join(_missing_env_vars(deps))
         raise HTTPException(503, detail=f"query unavailable; missing env vars: {missing}")
     if not (deps.paths.corpora_dir / req.corpus_id / "manifest.json").exists():
         raise HTTPException(404, detail=f"unknown corpus: {req.corpus_id}")
-    result = deps.query_runner.run(query=req.query, corpus_id=req.corpus_id, preset=req.preset)
+    result = deps.query_runner.run(
+        query=req.query,
+        corpus_id=req.corpus_id,
+        preset=req.preset,
+        token_ceiling=deps.demo_ledger.config.s2_token_ceiling if deps.demo_ledger else None,
+    )
+    if deps.demo_ledger is not None:
+        deps.demo_ledger.record(ip, EST_DEMO_QUERY_USD)
     return m.QueryResponse(
         answer=result.answer,
         abstained=result.abstained,

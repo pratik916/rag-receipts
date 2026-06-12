@@ -15,7 +15,9 @@ class StubQueryRunner:
     def __init__(self, trace_store) -> None:
         self._ts = trace_store
 
-    def run(self, *, query: str, corpus_id: str, preset: str) -> QueryResult:
+    def run(
+        self, *, query: str, corpus_id: str, preset: str, token_ceiling: int | None = None
+    ) -> QueryResult:
         trace_id = "t-123"
         self._ts.append(
             TraceEvent(

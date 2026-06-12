@@ -104,7 +104,9 @@ class FixtureQueryRunner:
         self._chunks = chunks
         self._traces = trace_store
 
-    def run(self, *, query: str, corpus_id: str, preset: str) -> QueryResult:
+    def run(
+        self, *, query: str, corpus_id: str, preset: str, token_ceiling: int | None = None
+    ) -> QueryResult:
         trace_id = uuid.uuid4().hex
         # A "graph:"-prefixed query routes to the graph plane (mirrors the
         # "degrade:" convention) so the Playground can assert the Graph badge +
