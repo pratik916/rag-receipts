@@ -106,6 +106,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/demo/examples": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Demo Examples */
+        get: operations["list_demo_examples_demo_examples_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/eval/runs": {
         parameters: {
             query?: never;
@@ -206,6 +223,26 @@ export interface components {
             est_usd: number;
             /** Pricing Table Version */
             pricing_table_version: string;
+        };
+        /** DemoExampleItem */
+        DemoExampleItem: {
+            /** Label */
+            label: string;
+            /** Query */
+            query: string;
+            /** Answer */
+            answer: string;
+            /** Route */
+            route: string;
+            /** Citations */
+            citations: components["schemas"]["CitationModel"][];
+            /** Trace Events */
+            trace_events: components["schemas"]["TraceEventModel"][];
+        };
+        /** DemoExamplesResponse */
+        DemoExamplesResponse: {
+            /** Examples */
+            examples: components["schemas"]["DemoExampleItem"][];
         };
         /** EvalRunListItem */
         EvalRunListItem: {
@@ -582,6 +619,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReceiptsResponse"];
+                };
+            };
+        };
+    };
+    list_demo_examples_demo_examples_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemoExamplesResponse"];
                 };
             };
         };
