@@ -111,6 +111,8 @@ async def ingest_corpus(
     files: Annotated[list[UploadFile], File()],
     deps: AppDeps = Depends(get_deps),
 ) -> m.IngestResponse:
+    if deps.demo_ledger is not None:
+        raise HTTPException(403, detail="ingest is read-only in the public demo")
     if deps.ingest_sink is None:
         missing = ", ".join(_missing_env_vars(deps))
         raise HTTPException(503, detail=f"ingest unavailable; missing env vars: {missing}")
@@ -177,6 +179,8 @@ def list_eval_runs(deps: AppDeps = Depends(get_deps)) -> m.EvalRunsResponse:
 
 @router.post("/eval/runs", response_model=m.EvalRunResponse)
 def create_eval_run(req: m.EvalRunRequest, deps: AppDeps = Depends(get_deps)) -> m.EvalRunResponse:
+    if deps.demo_ledger is not None:
+        raise HTTPException(403, detail="eval is read-only in the public demo")
     if deps.eval_runner is None:
         missing = ", ".join(_missing_env_vars(deps))
         raise HTTPException(503, detail=f"eval unavailable; missing env vars: {missing}")

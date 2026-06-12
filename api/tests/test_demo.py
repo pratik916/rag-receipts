@@ -6,8 +6,12 @@ import sqlite3
 
 import pytest
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
 
+from ragreceipts.server.app import create_app
 from ragreceipts.server.demo import DemoConfig, DemoLedger
+from ragreceipts.server.deps import AppDeps, AppPaths
+from ragreceipts.server.jobs import JobRunner
 
 # ── DemoConfig ────────────────────────────────────────────────────────────────
 
@@ -197,3 +201,101 @@ def test_build_deps_demo_ledger_is_none_when_demo_mode_unset(tmp_path, monkeypat
 
     deps = build_deps()
     assert deps.demo_ledger is None
+
+
+# ── Endpoint 403 guards ────────────────────────────────────────────────────────
+
+
+def _make_test_app(tmp_path, *, with_demo: bool = True):
+    """Return a FastAPI app with minimal fake AppDeps for endpoint tests."""
+    paths = AppPaths(
+        data_dir=tmp_path / "data",
+        receipts_committed_dir=tmp_path / "receipts",
+        demo_corpus_dir=tmp_path / "demo" / "corpus",
+        demo_examples_dir=tmp_path / "demo" / "examples",
+    )
+    (tmp_path / "data").mkdir(parents=True, exist_ok=True)
+
+    if with_demo:
+        demo_cfg = DemoConfig(
+            daily_budget_usd=2.0,
+            rate_per_min=5,
+            rate_per_day=20,
+            s2_token_ceiling=20_000,
+            demo_corpus_id="demo",
+        )
+        demo_ledger = DemoLedger(demo_cfg, paths.demo_db)
+    else:
+        demo_ledger = None
+
+    from tests.fakes import InMemoryTraceStore
+
+    deps = AppDeps(
+        paths=paths,
+        vendors=[],
+        qdrant=None,
+        trace_store=InMemoryTraceStore(),
+        job_runner=JobRunner(paths.jobs_db),
+        query_runner=None,
+        eval_runner=None,
+        ingest_sink=None,
+        testing_mode=True,
+        demo_ledger=demo_ledger,
+    )
+    return create_app(deps_factory=lambda: deps)
+
+
+def test_ingest_returns_403_in_demo_mode(tmp_path):
+    app = _make_test_app(tmp_path, with_demo=True)
+    with TestClient(app) as client:
+        response = client.post(
+            "/corpora/ingest",
+            data={"corpus_id": "test"},
+            files={"files": ("a.txt", b"hello", "text/plain")},
+        )
+    assert response.status_code == 403
+    assert "read-only" in response.json()["detail"]
+
+
+def test_ingest_works_normally_without_demo_mode(tmp_path):
+    app = _make_test_app(tmp_path, with_demo=False)
+    with TestClient(app) as client:
+        response = client.post(
+            "/corpora/ingest",
+            data={"corpus_id": "test"},
+            files={"files": ("a.txt", b"hello", "text/plain")},
+        )
+    assert response.status_code != 403  # 503 because ingest_sink is None
+
+
+def test_eval_runs_post_returns_403_in_demo_mode(tmp_path):
+    app = _make_test_app(tmp_path, with_demo=True)
+    with TestClient(app) as client:
+        response = client.post(
+            "/eval/runs",
+            json={
+                "corpus_id": "x",
+                "preset": "bm25-only",
+                "slice": "smoke",
+                "spend_cap_usd": 1.0,
+                "confirm": False,
+            },
+        )
+    assert response.status_code == 403
+    assert "read-only" in response.json()["detail"]
+
+
+def test_eval_runs_post_works_without_demo_mode(tmp_path):
+    app = _make_test_app(tmp_path, with_demo=False)
+    with TestClient(app) as client:
+        response = client.post(
+            "/eval/runs",
+            json={
+                "corpus_id": "x",
+                "preset": "bm25-only",
+                "slice": "smoke",
+                "spend_cap_usd": 1.0,
+                "confirm": False,
+            },
+        )
+    assert response.status_code != 403  # 503 because eval_runner is None
