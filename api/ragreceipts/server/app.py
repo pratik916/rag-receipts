@@ -22,6 +22,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import ValidationError
 
 from ragreceipts.server import models as m
 from ragreceipts.server.demo import EST_DEMO_QUERY_USD, _get_client_ip
@@ -190,7 +191,7 @@ def list_demo_examples(deps: AppDeps = Depends(get_deps)) -> m.DemoExamplesRespo
             try:
                 data = json.loads(path.read_text())
                 examples.append(m.DemoExampleItem(**data))
-            except (json.JSONDecodeError, TypeError, ValueError, KeyError):
+            except (json.JSONDecodeError, TypeError, ValueError, KeyError, ValidationError):
                 logger.warning("Skipping malformed demo example: %s", path)
     return m.DemoExamplesResponse(examples=examples)
 
