@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json as _json
 import sqlite3
 
 import pytest
@@ -403,3 +404,62 @@ def test_query_budget_exhausted_raises_429(tmp_path):
         )
     assert response.status_code == 429
     assert response.json()["detail"]["reason"] == "budget"
+
+
+# ── GET /demo/examples ────────────────────────────────────────────────────────
+
+
+def test_demo_examples_returns_empty_list_when_dir_absent(tmp_path):
+    app = _make_test_app(tmp_path, with_demo=True)
+    with TestClient(app) as client:
+        response = client.get("/demo/examples")
+    assert response.status_code == 200
+    assert response.json()["examples"] == []
+
+
+def test_demo_examples_returns_empty_list_when_dir_is_empty(tmp_path):
+    (tmp_path / "demo" / "examples").mkdir(parents=True)
+    app = _make_test_app(tmp_path, with_demo=True)
+    with TestClient(app) as client:
+        response = client.get("/demo/examples")
+    assert response.status_code == 200
+    assert response.json()["examples"] == []
+
+
+def test_demo_examples_returns_examples_from_json_files(tmp_path):
+    ex_dir = tmp_path / "demo" / "examples"
+    ex_dir.mkdir(parents=True)
+    example = {
+        "label": "s1",
+        "query": "Who walked on the Moon?",
+        "answer": "Neil Armstrong",
+        "route": "s1",
+        "citations": [
+            {
+                "n": 1,
+                "chunk_id": "c1",
+                "passage_id": "p1",
+                "text": "Neil Armstrong walked on the Moon.",
+                "score": 0.9,
+            }
+        ],
+        "trace_events": [],
+    }
+    (ex_dir / "example_s1.json").write_text(_json.dumps(example))
+    app = _make_test_app(tmp_path, with_demo=True)
+    with TestClient(app) as client:
+        response = client.get("/demo/examples")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["examples"]) == 1
+    assert data["examples"][0]["label"] == "s1"
+    assert data["examples"][0]["query"] == "Who walked on the Moon?"
+
+
+def test_demo_examples_works_without_demo_mode(tmp_path):
+    ex_dir = tmp_path / "demo" / "examples"
+    ex_dir.mkdir(parents=True)
+    app = _make_test_app(tmp_path, with_demo=False)
+    with TestClient(app) as client:
+        response = client.get("/demo/examples")
+    assert response.status_code == 200

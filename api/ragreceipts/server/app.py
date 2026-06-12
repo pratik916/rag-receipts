@@ -12,6 +12,7 @@ sys.path, which the TESTING=1 seam needs to import the tests package.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from collections.abc import Callable
 from contextlib import asynccontextmanager
@@ -25,6 +26,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from ragreceipts.server import models as m
 from ragreceipts.server.demo import EST_DEMO_QUERY_USD, _get_client_ip
 from ragreceipts.server.deps import AppDeps, build_deps
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -177,6 +180,19 @@ def list_receipts(deps: AppDeps = Depends(get_deps)) -> m.ReceiptsResponse:
     receipts = _load_receipts(deps.paths.receipts_committed_dir, "committed", errors)
     receipts += _load_receipts(deps.paths.receipts_local_dir, "local", errors)
     return m.ReceiptsResponse(receipts=receipts, errors=errors)
+
+
+@router.get("/demo/examples", response_model=m.DemoExamplesResponse)
+def list_demo_examples(deps: AppDeps = Depends(get_deps)) -> m.DemoExamplesResponse:
+    examples: list[m.DemoExampleItem] = []
+    if deps.paths.demo_examples_dir.exists():
+        for path in sorted(deps.paths.demo_examples_dir.glob("*.json")):
+            try:
+                data = json.loads(path.read_text())
+                examples.append(m.DemoExampleItem(**data))
+            except (json.JSONDecodeError, TypeError, ValueError, KeyError):
+                logger.warning("Skipping malformed demo example: %s", path)
+    return m.DemoExamplesResponse(examples=examples)
 
 
 @router.get("/eval/runs", response_model=m.EvalRunsResponse)

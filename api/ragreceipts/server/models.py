@@ -180,3 +180,19 @@ class ReceiptEntryModel(BaseModel):
 class ReceiptsResponse(BaseModel):
     receipts: list[ReceiptEntryModel]
     errors: list[str]  # unparseable receipt files, disclosed — never silently dropped
+
+
+# -- demo examples ------------------------------------------------------------
+
+
+class DemoExampleItem(BaseModel):
+    label: str
+    query: str
+    answer: str
+    route: str
+    citations: list[CitationModel]
+    trace_events: list[TraceEventModel]
+
+
+class DemoExamplesResponse(BaseModel):
+    examples: list[DemoExampleItem]
