@@ -358,6 +358,94 @@ def test_promote_missing_run_is_actionable(tmp_path, capsys) -> None:
     assert "ghost" in capsys.readouterr().err
 
 
+def test_eval_wires_graph_factory_to_serving_route_core(monkeypatch, tmp_path):
+    """Serving/eval symmetry: _cmd_eval threads a graph_factory into AblationRunner that
+    mirrors serving (server/pipeline._default_graph_retriever_factory). On a corpus with a
+    graph artifact, calling the captured factory with the router-on preset yields the SAME
+    `.retrieve`-shaped graph-only RetrievalCore the live server builds — so the eval
+    router-on graph route can actually reach graph instead of silently falling back to s1."""
+    from tests.graph_fixtures import fixture_chunks, write_graph_corpus
+
+    captured: dict = {}
+
+    class _Runner:
+        def __init__(self, **kw):
+            captured.update(kw)
+
+        def run(self, **kw):
+            return {"skipped": [], "receipts": []}
+
+    write_graph_corpus(tmp_path)  # real offline graph artifact + raw/ + manifest
+    # serving reads the canonical chunks.jsonl; the graph route-core resolves chunk-by-id
+    # against it, so the corpus must carry it (write_graph_corpus only writes raw/+graph/).
+    write_chunks(tmp_path / "corpora" / "graph-harness" / "chunks.jsonl", fixture_chunks())
+    monkeypatch.setattr(cli, "AblationRunner", _Runner)
+    monkeypatch.setattr(cli, "_make_claude", lambda: object())
+    monkeypatch.setattr(cli, "build_embed_transport", lambda: FakeEmbed())
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "x")
+    rc = cli.main(
+        [
+            "eval",
+            "--corpus",
+            "graph-harness",
+            "--slice",
+            "smoke",
+            "--presets",
+            "router-on",
+            "--data-dir",
+            str(tmp_path),
+            "--yes",
+        ]
+    )
+    assert rc == 0
+    # the production path passed a graph_factory (was the unwired eval-plane bug)
+    graph_factory = captured["graph_factory"]
+    assert graph_factory is not None
+    # and it mirrors serving: for router-on on this graph corpus it returns the
+    # `.retrieve`-shaped graph-only core, not None and not a non-graph core.
+    route_core = graph_factory(PRESETS["router-on"])
+    assert isinstance(route_core, RetrievalCore)
+    assert hasattr(route_core, "retrieve")
+    assert route_core._graph is not None
+    assert route_core._sparse is None and route_core._dense is None
+
+
+def test_eval_graph_factory_is_none_safe_without_artifact(monkeypatch, tmp_path):
+    """The threaded graph_factory degrades honestly: on a corpus with NO graph artifact it
+    returns None (route stays unreachable -> s1 fallback), exactly like serving."""
+    captured: dict = {}
+
+    class _Runner:
+        def __init__(self, **kw):
+            captured.update(kw)
+
+        def run(self, **kw):
+            return {"skipped": [], "receipts": []}
+
+    write_min_corpus(tmp_path)  # nq corpus, no graph/ dir
+    monkeypatch.setattr(cli, "AblationRunner", _Runner)
+    monkeypatch.setattr(cli, "_make_claude", lambda: object())
+    monkeypatch.setattr(cli, "build_embed_transport", lambda: FakeEmbed())
+    for key in KEYS:
+        monkeypatch.setenv(key, "k")
+    rc = cli.main(
+        [
+            "eval",
+            "--corpus",
+            "c1",
+            "--slice",
+            "smoke",
+            "--presets",
+            "router-on",
+            "--data-dir",
+            str(tmp_path),
+            "--yes",
+        ]
+    )
+    assert rc == 0
+    assert captured["graph_factory"](PRESETS["router-on"]) is None
+
+
 def test_eval_accepts_graph_recognition_flag(monkeypatch, tmp_path):
     """--graph-recognition is parsed and threaded to the runner (recognition sweep)."""
     captured: dict = {}

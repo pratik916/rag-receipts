@@ -139,10 +139,18 @@ class RealEvalRunner:
         from ragreceipts.cli import _build_core_real, _make_claude
         from ragreceipts.eval.run_state import RunStore
         from ragreceipts.eval.runner import AblationRunner
+        from ragreceipts.server.pipeline import _default_graph_retriever_factory
 
         return AblationRunner(
             core_factory=lambda cfg: _build_core_real(cfg, corpus_id, self._data_dir),
             claude=_make_claude(),
             store=RunStore(self._data_dir / "eval-runs.db"),
             data_dir=self._data_dir,
+            # Serving/eval symmetry: the eval router-on graph route reaches the SAME
+            # graph-only RetrievalCore RealQueryRunner serves. AblationRunner calls
+            # graph_factory(cfg); we bind corpus/data_dir into the serving factory, which
+            # returns None when the corpus has no graph artifact (honest s1 fallback).
+            graph_factory=lambda cfg: _default_graph_retriever_factory(
+                cfg, corpus_id, self._data_dir
+            ),
         )
