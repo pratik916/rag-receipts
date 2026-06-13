@@ -81,6 +81,64 @@ def build_rerank_transport() -> CohereClient:
     return CohereClient(api_key=api_key)
 
 
+def build_graph_retriever(corpus_dir: Path, config: PipelineConfig, chunks):
+    """Load the graph artifact from {corpus_dir}/graph/ and build a GraphRetriever.
+
+    Mirrors the keyed eval construction (tests/test_eval_graph.py): GraphIndex.load
+    reads the byte-reproducible artifact `ragreceipts ingest`/build_graph.py wrote,
+    and the retriever is constructed with the RG1 keyword-only ctor (chunks required,
+    embed via the shared seam, claude only when recognition='llm'). Returns None if
+    the artifact dir is absent — the corpus was ingested without a graph, so callers
+    degrade honestly rather than fabricate one.
+    """
+    from ragreceipts.ingest.graph_index import GraphIndex
+    from ragreceipts.retrieval.graph import GraphRetriever
+
+    graph_dir = corpus_dir / "graph"
+    if not graph_dir.exists():
+        return None
+    index = GraphIndex.load(graph_dir)
+    recognition = config.query.graph_recognition
+    return GraphRetriever(
+        index,
+        chunks=chunks,
+        embed=build_embed_transport(),
+        claude=_make_claude() if recognition == "llm" else None,
+        recognition=recognition,
+    )
+
+
+def build_graph_route_core(
+    corpus_dir: Path, config: PipelineConfig, chunks
+) -> RetrievalCore | None:
+    """A graph-only RetrievalCore for the agent-layer graph route (router-on).
+
+    The agent graph (agents/graph.py::graph_retrieve_node) calls
+    `graph_retriever.retrieve(query)` — the SupportsRetrieve protocol — so the route
+    needs a `.retrieve` object, not a raw GraphRetriever (which exposes `.search`).
+    Wrapping the GraphRetriever in a graph-only RetrievalCore satisfies that protocol
+    AND keeps the shared-core guarantee: the graph route runs the same RetrievalCore
+    the eval graph preset does. The wrapping core inherits the serving preset's
+    graph_recognition and top_k_final so the route returns the same depth. Returns
+    None when the corpus has no graph artifact (route stays unreachable -> s1 fallback).
+    """
+    import dataclasses
+
+    graph_retriever = build_graph_retriever(corpus_dir, config, chunks)
+    if graph_retriever is None:
+        return None
+    # Graph-only query config: only the graph retriever fires, with the serving
+    # preset's recognition mode and final depth (route_mode is irrelevant here —
+    # RetrievalCore.retrieve is route-agnostic).
+    graph_query = dataclasses.replace(
+        config.query, bm25=False, dense=False, rerank=False, graph=True
+    )
+    graph_config = dataclasses.replace(config, query=graph_query)
+    return RetrievalCore(
+        config=graph_config, dense=None, sparse=None, rerank_stage=None, graph=graph_retriever
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="ragreceipts")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -222,7 +280,14 @@ def _build_core_real(config: PipelineConfig, corpus_id: str, data_dir: Path) -> 
         else None
     )
     rerank_stage = RerankStage(build_rerank_transport()) if config.query.rerank else None
-    return RetrievalCore(config=config, dense=dense, sparse=sparse, rerank_stage=rerank_stage)
+    # graph presets (graph, graph-rrf) enable query.graph: load the artifact and pass it
+    # in. If config.query.graph is True but the artifact is absent, graph stays None and
+    # RetrievalCore raises the existing clear "no graph retriever" error (honest failure —
+    # the corpus must be (re)ingested with a graph, never a silently disabled retriever).
+    graph = build_graph_retriever(corpus_dir, config, chunks) if config.query.graph else None
+    return RetrievalCore(
+        config=config, dense=dense, sparse=sparse, rerank_stage=rerank_stage, graph=graph
+    )
 
 
 def _make_claude():
