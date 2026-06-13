@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import json as _json
 import sqlite3
 
@@ -531,6 +532,7 @@ def test_demo_corpus_docs_jsonl_has_12_docs():
     """Validate demo/corpus/docs.jsonl exists and has exactly 12 well-formed entries."""
     import json as _json
     from pathlib import Path
+
     docs_path = Path(__file__).resolve().parents[2] / "demo" / "corpus" / "docs.jsonl"
     assert docs_path.exists(), f"docs.jsonl not found at {docs_path}"
     lines = [ln for ln in docs_path.read_text().splitlines() if ln.strip()]
@@ -540,3 +542,69 @@ def test_demo_corpus_docs_jsonl_has_12_docs():
         for key in ("id", "title", "text"):
             assert key in doc, f"doc {i} missing key {key!r}"
         assert len(doc["text"]) >= 100, f"doc {i} text too short"
+
+
+# ── materialize_demo_corpus ───────────────────────────────────────────────────
+
+
+def _write_fake_committed_corpus(src_dir):
+    """Write a minimal committed demo/corpus/ tree (manifest + chunks + sparse + graph)."""
+    src_dir.mkdir(parents=True, exist_ok=True)
+    (src_dir / "manifest.json").write_text(json.dumps({"corpus_id": "demo"}))
+    (src_dir / "chunks.jsonl").write_text(json.dumps({"chunk_id": "c0"}) + "\n")
+    (src_dir / "sparse").mkdir(exist_ok=True)
+    (src_dir / "sparse" / "index.bin").write_text("bm25")
+    (src_dir / "graph").mkdir(exist_ok=True)
+    (src_dir / "graph" / "nodes.jsonl").write_text(json.dumps({"id": "n0"}) + "\n")
+    # dense_vectors.npz exists in the committed tree but must NOT be copied to the corpora dir
+    (src_dir / "dense_vectors.npz").write_text("not-really-npz")
+
+
+def test_materialize_demo_corpus_copies_artifacts(tmp_path):
+    from ragreceipts.server.demo import materialize_demo_corpus
+
+    src = tmp_path / "demo" / "corpus"
+    _write_fake_committed_corpus(src)
+    corpora_dir = tmp_path / "data" / "corpora"
+    materialize_demo_corpus(src, corpora_dir, "demo")
+    target = corpora_dir / "demo"
+    assert (target / "manifest.json").exists()
+    assert (target / "chunks.jsonl").exists()
+    assert (target / "sparse" / "index.bin").exists()
+    assert (target / "graph" / "nodes.jsonl").exists()
+
+
+def test_materialize_demo_corpus_skips_dense_vectors(tmp_path):
+    from ragreceipts.server.demo import materialize_demo_corpus
+
+    src = tmp_path / "demo" / "corpus"
+    _write_fake_committed_corpus(src)
+    corpora_dir = tmp_path / "data" / "corpora"
+    materialize_demo_corpus(src, corpora_dir, "demo")
+    # dense_vectors.npz is for Qdrant seeding only — must not land in the corpora dir
+    assert not (corpora_dir / "demo" / "dense_vectors.npz").exists()
+
+
+def test_materialize_demo_corpus_is_idempotent(tmp_path):
+    from ragreceipts.server.demo import materialize_demo_corpus
+
+    src = tmp_path / "demo" / "corpus"
+    _write_fake_committed_corpus(src)
+    corpora_dir = tmp_path / "data" / "corpora"
+    materialize_demo_corpus(src, corpora_dir, "demo")
+    # mutate the target to prove a second call does NOT overwrite (sentinel = manifest present)
+    (corpora_dir / "demo" / "manifest.json").write_text(
+        json.dumps({"corpus_id": "demo", "touched": True})
+    )
+    materialize_demo_corpus(src, corpora_dir, "demo")
+    data = json.loads((corpora_dir / "demo" / "manifest.json").read_text())
+    assert data.get("touched") is True  # not clobbered
+
+
+def test_materialize_demo_corpus_noop_when_src_absent(tmp_path):
+    from ragreceipts.server.demo import materialize_demo_corpus
+
+    src = tmp_path / "demo" / "corpus"  # never created (pre-bootstrap)
+    corpora_dir = tmp_path / "data" / "corpora"
+    materialize_demo_corpus(src, corpora_dir, "demo")  # must not raise
+    assert not (corpora_dir / "demo").exists()
