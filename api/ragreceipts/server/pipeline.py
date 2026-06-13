@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Protocol
 
 from ragreceipts.config import PRESETS
+from ragreceipts.types import RouteMode
 
 
 @dataclass(frozen=True)
@@ -46,14 +47,37 @@ def _collect_degraded(events) -> list[str]:
     return out
 
 
+def _default_graph_retriever_factory(config, corpus_id: str, data_dir: Path):
+    """Build the agent-route graph retriever for one query (None if no artifact).
+
+    Reads the corpus's canonical chunks and hands them to cli.build_graph_route_core,
+    which loads {corpus_dir}/graph/ and wraps a GraphRetriever in a graph-only
+    RetrievalCore (the `.retrieve`-shaped object the agent graph route consumes). Lazy
+    import keeps offline RealQueryRunner tests — which inject this seam — vendor-free.
+    """
+    from ragreceipts.cli import build_graph_route_core
+    from ragreceipts.ingest.chunk_store import read_chunks
+
+    corpus_dir = data_dir / "corpora" / corpus_id
+    chunks_path = corpus_dir / "chunks.jsonl"
+    if not chunks_path.exists():
+        return None
+    chunks = read_chunks(chunks_path)
+    return build_graph_route_core(corpus_dir, config, chunks)
+
+
 class RealQueryRunner:
     """QueryRunner over the R9-pinned production entry points.
 
     Pins (contracts §Seam Resolutions R9):
       - agents/service.py::run_query(query=, core=, claude=, store=, config=) -> GraphResult
       - cli.py::_build_core_real(config, corpus_id, data_dir) -> RetrievalCore
-    GraphResult: final (FinalAnswer: text/citations/abstained), system ("s1"|"s2"),
+    GraphResult: final (FinalAnswer: text/citations/abstained), system ("s1"|"s2"|"graph"),
     trace_id, tokens_used, hops_used, retrieved (list[ScoredChunk]).
+    The agent-layer graph route (router-on) needs a separate `.retrieve`-shaped graph
+    retriever — a graph-only RetrievalCore over the corpus's graph artifact, built via
+    cli.build_graph_route_core (the same shared-core seam eval uses). It is None when the
+    corpus has no graph artifact, so the graph decision falls back to s1 (visible, honest).
     Constructor seams default to the real entry points; tests inject fakes.
     """
 
@@ -65,6 +89,7 @@ class RealQueryRunner:
         claude,
         core_factory: Callable | None = None,
         run_query_fn: Callable | None = None,
+        graph_retriever_factory: Callable | None = None,
     ) -> None:
         if core_factory is None:
             from ragreceipts.cli import _build_core_real  # R9 composition root
@@ -74,23 +99,35 @@ class RealQueryRunner:
             from ragreceipts.agents.service import run_query  # R9 graph entry point
 
             run_query_fn = run_query
+        if graph_retriever_factory is None:
+            graph_retriever_factory = _default_graph_retriever_factory
         self._data_dir = data_dir
         self._trace_store = trace_store
         self._claude = claude
         self._core_factory = core_factory
         self._run_query = run_query_fn
+        self._graph_retriever_factory = graph_retriever_factory
 
     def run(
         self, *, query: str, corpus_id: str, preset: str, token_ceiling: int | None = None
     ) -> QueryResult:
         config = PRESETS[preset]
         core = self._core_factory(config, corpus_id, self._data_dir)
+        # The graph route is reachable only under AUTO (the router emits route='graph'
+        # only then; FORCE_S1 presets never run the router). Building the graph retriever
+        # only for AUTO presets keeps FORCE_S1 serving (and its trace) byte-identical.
+        graph_retriever = (
+            self._graph_retriever_factory(config, corpus_id, self._data_dir)
+            if config.query.route_mode is RouteMode.AUTO
+            else None
+        )
         result = self._run_query(
             query=query,
             core=core,
             claude=self._claude,
             store=self._trace_store,
             config=config,
+            graph_retriever=graph_retriever,
             token_ceiling=token_ceiling,
         )
         citations: list[Citation] = []

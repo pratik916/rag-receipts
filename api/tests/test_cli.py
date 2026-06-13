@@ -241,6 +241,91 @@ def test_build_core_real_composes_offline_with_fakes(tmp_path, monkeypatch) -> N
         assert isinstance(core, RetrievalCore)
 
 
+def test_build_core_real_builds_graph_for_graph_preset(tmp_path, monkeypatch) -> None:
+    """The serving/eval composition root wires GraphRetriever for graph presets.
+
+    Offline: a real byte-reproducible graph artifact built by Plan E's build_graph_index
+    (FakeOpenIE/FakeEmbed) lives at {corpus_dir}/graph/; chunks.jsonl holds the SAME
+    chunks so the retriever's chunk-by-id map resolves. The graph 'preset' (graph-only,
+    FORCE_S1) needs no sparse/dense index. Asserts the core's graph retriever is set
+    (not None) and construction does not raise the 'no graph retriever' error."""
+    from tests.graph_fixtures import fixture_chunks, write_graph_artifact
+
+    corpus_dir = tmp_path / "corpora" / "graph-harness"
+    corpus_dir.mkdir(parents=True)
+    write_chunks(corpus_dir / "chunks.jsonl", fixture_chunks())
+    write_graph_artifact(corpus_dir)  # builds {corpus_dir}/graph/ with the real builder
+    monkeypatch.setattr(cli, "build_embed_transport", lambda: FakeEmbed())
+    monkeypatch.setattr(cli, "_make_claude", lambda: object())  # recognition='llm' ctor only
+
+    core = cli._build_core_real(PRESETS["graph"], "graph-harness", tmp_path)
+    assert isinstance(core, RetrievalCore)
+    assert core._graph is not None  # graph retriever wired (was the unwired bug)
+
+
+def test_build_core_real_builds_graph_rrf_with_sparse_dense_and_graph(
+    tmp_path, monkeypatch
+) -> None:
+    """graph-rrf fuses bm25 + dense + graph: all three retrievers must be present."""
+    from tests.graph_fixtures import fixture_chunks, write_graph_artifact
+
+    corpus_dir = tmp_path / "corpora" / "graph-harness"
+    corpus_dir.mkdir(parents=True)
+    chunks = fixture_chunks()
+    write_chunks(corpus_dir / "chunks.jsonl", chunks)
+    build_sparse_index(chunks, corpus_dir / "sparse")
+    write_graph_artifact(corpus_dir)
+    monkeypatch.setattr(cli, "build_embed_transport", lambda: FakeEmbed())
+    monkeypatch.setattr(cli, "build_qdrant", lambda data_dir: QdrantClient(":memory:"))
+    monkeypatch.setattr(cli, "_make_claude", lambda: object())
+
+    core = cli._build_core_real(PRESETS["graph-rrf"], "graph-harness", tmp_path)
+    assert isinstance(core, RetrievalCore)
+    assert core._graph is not None and core._sparse is not None and core._dense is not None
+
+
+def test_build_core_real_raises_when_graph_preset_lacks_artifact(tmp_path, monkeypatch) -> None:
+    """Honest failure: a graph preset on a corpus ingested WITHOUT a graph artifact
+    surfaces RetrievalCore's clear 'no graph retriever' error — never a silent disable."""
+    from tests.graph_fixtures import fixture_chunks
+
+    corpus_dir = tmp_path / "corpora" / "no-graph"
+    corpus_dir.mkdir(parents=True)
+    write_chunks(corpus_dir / "chunks.jsonl", fixture_chunks())  # no graph/ dir written
+    monkeypatch.setattr(cli, "build_embed_transport", lambda: FakeEmbed())
+    monkeypatch.setattr(cli, "_make_claude", lambda: object())
+
+    with pytest.raises(ValueError, match="no graph retriever"):
+        cli._build_core_real(PRESETS["graph"], "no-graph", tmp_path)
+
+
+def test_build_graph_route_core_wraps_graph_in_retrieve_shaped_core(tmp_path, monkeypatch) -> None:
+    """The agent-route helper returns a `.retrieve`-shaped graph-only RetrievalCore
+    (the SupportsRetrieve object the router's graph route consumes), or None when the
+    corpus has no graph artifact."""
+    from tests.graph_fixtures import fixture_chunks, write_graph_artifact
+
+    corpus_dir = tmp_path / "corpora" / "graph-harness"
+    corpus_dir.mkdir(parents=True)
+    chunks = fixture_chunks()
+    write_chunks(corpus_dir / "chunks.jsonl", chunks)
+    write_graph_artifact(corpus_dir)
+    monkeypatch.setattr(cli, "build_embed_transport", lambda: FakeEmbed())
+    monkeypatch.setattr(cli, "_make_claude", lambda: object())
+
+    # router-on's recognition is 'llm' by default; the wrapping core is graph-only.
+    route_core = cli.build_graph_route_core(corpus_dir, PRESETS["router-on"], chunks)
+    assert isinstance(route_core, RetrievalCore)
+    assert hasattr(route_core, "retrieve")  # the protocol the agent route needs
+    assert route_core._graph is not None
+    assert route_core._sparse is None and route_core._dense is None
+
+    # absent artifact -> None (route falls back to s1, honest)
+    empty_dir = tmp_path / "corpora" / "empty"
+    empty_dir.mkdir(parents=True)
+    assert cli.build_graph_route_core(empty_dir, PRESETS["router-on"], chunks) is None
+
+
 def test_promote_strips_text_and_writes_to_receipts_dir(tmp_path, capsys) -> None:
     data_dir = tmp_path / "data"
     receipts_dir = tmp_path / "receipts"
