@@ -28,6 +28,7 @@ def test_health_names_missing_env_vars(tmp_path):
     }
     assert body["qdrant_ok"] is False
     assert body["testing_mode"] is False
+    assert body["demo_mode"] is False  # no demo_ledger wired in make_test_deps
 
 
 def test_health_ok_when_configured_and_qdrant_reachable(tmp_path):

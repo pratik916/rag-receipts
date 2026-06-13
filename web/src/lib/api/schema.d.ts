@@ -318,6 +318,8 @@ export interface components {
             missing_env_vars: string[];
             /** Testing Mode */
             testing_mode: boolean;
+            /** Demo Mode */
+            demo_mode: boolean;
         };
         /** IngestResponse */
         IngestResponse: {

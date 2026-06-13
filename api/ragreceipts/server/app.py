@@ -65,6 +65,10 @@ def health(deps: AppDeps = Depends(get_deps)) -> m.HealthResponse:
         qdrant_ok=qdrant_ok,
         missing_env_vars=missing,
         testing_mode=deps.testing_mode,
+        # Demo mode is active iff the cost-control ledger is wired (server/demo.py).
+        # The Corpora page reads this to surface a read-only note instead of the
+        # BYO upload form, since /corpora/ingest returns 403 in the public demo.
+        demo_mode=deps.demo_ledger is not None,
     )
 
 
