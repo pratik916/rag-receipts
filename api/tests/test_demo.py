@@ -522,3 +522,21 @@ def test_seed_demo_qdrant_is_idempotent(tmp_path):
     seed_demo_qdrant(qdrant, corpus_dir, _make_demo_config())
     info = qdrant.get_collection("demo")
     assert info.points_count == 3  # still 3, not doubled
+
+
+# ── Corpus structure validation ───────────────────────────────────────────────
+
+
+def test_demo_corpus_docs_jsonl_has_12_docs():
+    """Validate demo/corpus/docs.jsonl exists and has exactly 12 well-formed entries."""
+    import json as _json
+    from pathlib import Path
+    docs_path = Path(__file__).resolve().parents[2] / "demo" / "corpus" / "docs.jsonl"
+    assert docs_path.exists(), f"docs.jsonl not found at {docs_path}"
+    lines = [ln for ln in docs_path.read_text().splitlines() if ln.strip()]
+    assert len(lines) == 12, f"Expected 12 docs, got {len(lines)}"
+    for i, line in enumerate(lines):
+        doc = _json.loads(line)
+        for key in ("id", "title", "text"):
+            assert key in doc, f"doc {i} missing key {key!r}"
+        assert len(doc["text"]) >= 100, f"doc {i} text too short"
