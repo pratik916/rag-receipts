@@ -1,0 +1,40 @@
+# Root build context for api/Dockerfile (built from repo root). Keep the context lean:
+# only api/, demo/, and receipts/ need to reach the api image. NEVER exclude demo/ or
+# receipts/ — they are baked into the image on purpose.
+
+# VCS / tooling
+.git
+.gitignore
+.dockerignore
+
+# Runtime data dir — gitignored, large, and lives on the mounted volume at runtime, never
+# baked into the image.
+data/
+*.sqlite
+qdrant_storage/
+
+# Python build/test artifacts
+**/__pycache__/
+**/*.pyc
+**/.venv/
+**/.pytest_cache/
+**/.ruff_cache/
+
+# The web service builds from its own context (web/Dockerfile); none of it belongs in the
+# api image. node_modules / .next are huge.
+web/node_modules/
+web/.next/
+web/test-results/
+web/playwright-report/
+web/e2e/
+
+# Secrets never get baked
+.env
+.env.*
+
+# Local planning scaffolding (gitignored)
+docs/superpowers/
+docs/research/
+
+# Misc
+.DS_Store

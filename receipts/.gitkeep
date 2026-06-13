@@ -1,0 +1,3 @@
+# Placeholder so the committed receipts/ dir exists in git and the Docker build context
+# before the keyed demo bootstrap runs (docs/runbooks/demo-bootstrap.md step 7 fills this
+# dir with promoted receipts/*.json). Empty until then: the /receipts endpoint returns [].
