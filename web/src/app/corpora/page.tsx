@@ -24,6 +24,9 @@ type Manifest = {
 
 export default function Corpora() {
   const [corpora, setCorpora] = useState<Corpus[]>([]);
+  // In the public demo /corpora/ingest returns 403, so BYO upload is hidden in
+  // favor of a read-only note. /health.demo_mode is the honest server signal.
+  const [demoMode, setDemoMode] = useState(false);
 
   const reload = useCallback(() => {
     api.GET("/corpora").then(({ data }) => setCorpora(data?.corpora ?? []));
@@ -31,12 +34,23 @@ export default function Corpora() {
 
   useEffect(() => {
     reload();
+    api.GET("/health").then(({ data }) => setDemoMode(data?.demo_mode ?? false));
   }, [reload]);
 
   return (
     <>
       <h1 style={{ fontSize: 20 }}>Corpora</h1>
-      <UploadForm onDone={reload} />
+      {demoMode ? (
+        <section className="card" data-testid="ingest-readonly">
+          <h2 style={{ marginTop: 0 }}>Bring your own documents</h2>
+          <p className="muted">
+            Ingest is read-only and disabled in the public demo. Clone the repo and run it
+            locally to upload your own PDF, Markdown, HTML, or text and watch it earn receipts.
+          </p>
+        </section>
+      ) : (
+        <UploadForm onDone={reload} />
+      )}
       {corpora.length === 0 && (
         <p className="muted">No corpora ingested yet.</p>
       )}

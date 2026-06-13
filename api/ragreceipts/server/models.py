@@ -44,6 +44,7 @@ class HealthResponse(BaseModel):
     qdrant_ok: bool
     missing_env_vars: list[str]
     testing_mode: bool
+    demo_mode: bool
 
 
 # -- query / traces -----------------------------------------------------------------

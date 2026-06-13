@@ -64,6 +64,11 @@ textarea {
 table.chunks { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
 table.chunks td { padding: 3px 8px 3px 0; border-top: 1px dashed var(--line); }
 .error { color: #b91c1c; }
+.banner {
+  border: 1px solid var(--warn); border-left-width: 4px; border-radius: 8px;
+  padding: 10px 14px; margin: 0 0 18px; color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 8%, var(--card));
+}
 .anchor { border-top: 1px solid var(--line); padding: 10px 0; }
 .anchor-head { display: flex; gap: 14px; flex-wrap: wrap; align-items: baseline; }
 blockquote { margin: 8px 0 0; padding: 8px 12px; border-left: 3px solid var(--line); color: var(--muted); }

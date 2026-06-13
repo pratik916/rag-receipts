@@ -673,6 +673,10 @@
           "testing_mode": {
             "type": "boolean",
             "title": "Testing Mode"
+          },
+          "demo_mode": {
+            "type": "boolean",
+            "title": "Demo Mode"
           }
         },
         "type": "object",
@@ -681,7 +685,8 @@
           "vendors",
           "qdrant_ok",
           "missing_env_vars",
-          "testing_mode"
+          "testing_mode",
+          "demo_mode"
         ],
         "title": "HealthResponse"
       },
