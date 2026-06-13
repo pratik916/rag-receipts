@@ -12,16 +12,24 @@ services:
       retries: 24
 
   api:
-    build: ./api
+    # Repo-root build context (not ./api) so the image can bake repo-root demo/ + receipts/
+    # — the api source still lands in /app exactly as a ./api context did.
+    build:
+      context: .
+      dockerfile: api/Dockerfile
     env_file: .env            # vendor keys reach the api ONLY
     environment:
       QDRANT_URL: http://qdrant:6333   # REQUIRED by the server (R7) — no silent default
       RAGRECEIPTS_DATA_DIR: /data
-      RAGRECEIPTS_RECEIPTS_DIR: /receipts
+      # demo corpus + receipts are baked into the image (see api/Dockerfile). The in-app
+      # default for these dirs resolves from cwd /app to /demo + /receipts, which do NOT
+      # exist — so point them at the baked /app/* paths (same values used on Railway).
+      RAGRECEIPTS_RECEIPTS_DIR: /app/receipts
+      RAGRECEIPTS_DEMO_CORPUS_DIR: /app/demo/corpus
+      RAGRECEIPTS_DEMO_EXAMPLES_DIR: /app/demo/examples
       RAGRECEIPTS_CORS_ORIGINS: http://localhost:3000
     volumes:
       - app-data:/data                  # SQLite (traces/jobs), bm25s indexes, corpora, local receipts
-      - ./receipts:/receipts:ro         # committed receipts, read-only at runtime (spec)
     ports:
       - "8000:8000"
     depends_on:

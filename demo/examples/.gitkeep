@@ -1,0 +1,3 @@
+# Placeholder so demo/examples/ exists in git and the Docker build context before the
+# keyed demo bootstrap runs (docs/runbooks/demo-bootstrap.md step 5 writes example_*.json
+# here). Empty until then: GET /demo/examples serves an empty list (graceful).
