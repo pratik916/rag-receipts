@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import json as _json
+import shutil
 import sqlite3
 
 import numpy as np
@@ -608,3 +609,44 @@ def test_materialize_demo_corpus_noop_when_src_absent(tmp_path):
     corpora_dir = tmp_path / "data" / "corpora"
     materialize_demo_corpus(src, corpora_dir, "demo")  # must not raise
     assert not (corpora_dir / "demo").exists()
+
+
+def test_materialize_demo_corpus_crash_recovery_cleans_stale_subdir(tmp_path):
+    """Crash-recovery: an interrupted prior run left a partial target subdir but no
+    sentinel manifest. The re-materialize must produce a CLEAN copy — stale files that
+    are not in the committed source must not survive (copytree merge would keep them)."""
+    from ragreceipts.server.demo import materialize_demo_corpus
+
+    src = tmp_path / "demo" / "corpus"
+    _write_fake_committed_corpus(src)
+    corpora_dir = tmp_path / "data" / "corpora"
+    materialize_demo_corpus(src, corpora_dir, "demo")
+
+    # Simulate an interrupted run: drop the sentinel manifest (so the next call
+    # re-materializes) and leave an orphaned file the committed source does not contain.
+    (corpora_dir / "demo" / "manifest.json").unlink()
+    (corpora_dir / "demo" / "sparse" / "orphaned.bin").write_text("stale")
+
+    materialize_demo_corpus(src, corpora_dir, "demo")
+
+    # The orphaned file is gone (clean re-copy) and the real artifacts are present.
+    assert not (corpora_dir / "demo" / "sparse" / "orphaned.bin").exists()
+    assert (corpora_dir / "demo" / "sparse" / "index.bin").exists()
+    assert (corpora_dir / "demo" / "manifest.json").exists()
+
+
+def test_materialize_demo_corpus_handles_missing_optional_artifacts(tmp_path):
+    """A source without a graph/ (corpus ingested without a graph) materializes cleanly:
+    the present artifacts copy across and the absent one is simply not created."""
+    from ragreceipts.server.demo import materialize_demo_corpus
+
+    src = tmp_path / "demo" / "corpus"
+    _write_fake_committed_corpus(src)
+    shutil.rmtree(src / "graph")  # no graph artifact in the committed source
+    corpora_dir = tmp_path / "data" / "corpora"
+    materialize_demo_corpus(src, corpora_dir, "demo")
+    target = corpora_dir / "demo"
+    assert (target / "manifest.json").exists()
+    assert (target / "chunks.jsonl").exists()
+    assert (target / "sparse" / "index.bin").exists()
+    assert not (target / "graph").exists()  # absent in source -> absent in target

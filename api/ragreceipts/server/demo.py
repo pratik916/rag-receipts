@@ -227,7 +227,14 @@ def materialize_demo_corpus(demo_corpus_dir: Path, corpora_dir: Path, corpus_id:
     for name in ("sparse", "graph"):
         src_sub = demo_corpus_dir / name
         if src_sub.is_dir():
-            shutil.copytree(src_sub, target / name, dirs_exist_ok=True)
+            # We only reach here with the sentinel manifest absent (first run, or an
+            # interrupted/changed-corpus partial), so this is a clean re-materialize: wipe
+            # any pre-existing target subdir first. copytree(dirs_exist_ok=True) MERGES,
+            # which would otherwise leave stale files from an aborted copy or an older corpus.
+            target_sub = target / name
+            if target_sub.exists():
+                shutil.rmtree(target_sub)
+            shutil.copytree(src_sub, target_sub)
     shutil.copy2(src_manifest, target / "manifest.json")
 
     logger.info("Materialized demo corpus into %s", target)
