@@ -192,3 +192,41 @@ def seed_demo_qdrant(qdrant: Any, demo_corpus_dir: Path, config: DemoConfig) -> 
     ]
     qdrant.upsert(collection_name=collection_name, points=points, wait=True)
     logger.info("Seeded %d points into demo collection %r", len(points), collection_name)
+
+
+def materialize_demo_corpus(demo_corpus_dir: Path, corpora_dir: Path, corpus_id: str) -> None:
+    """Copy committed demo corpus artifacts into the runtime corpora dir.
+
+    The query path reads chunks/sparse/graph/manifest from {data_dir}/corpora/<id>/,
+    but the committed artifacts live in demo_corpus_dir. Copy the query-time artifacts
+    across on startup. dense_vectors.npz is intentionally NOT copied (it feeds the Qdrant
+    seed only). No-op pre-bootstrap (source manifest absent) and idempotent (skips when the
+    target manifest already exists).
+    """
+    import shutil
+
+    src_manifest = demo_corpus_dir / "manifest.json"
+    if not src_manifest.exists():
+        logger.warning(
+            "demo/corpus/manifest.json not found — skipping corpus materialization. "
+            "Run docs/runbooks/demo-bootstrap.md first."
+        )
+        return
+
+    target = corpora_dir / corpus_id
+    if (target / "manifest.json").exists():
+        logger.info("Demo corpus already materialized at %s — skipping", target)
+        return
+
+    target.mkdir(parents=True, exist_ok=True)
+    # Copy the query-time artifacts only (not dense_vectors.npz).
+    for name in ("chunks.jsonl", "manifest.json"):
+        src_file = demo_corpus_dir / name
+        if src_file.exists():
+            shutil.copy2(src_file, target / name)
+    for name in ("sparse", "graph"):
+        src_sub = demo_corpus_dir / name
+        if src_sub.is_dir():
+            shutil.copytree(src_sub, target / name, dirs_exist_ok=True)
+
+    logger.info("Materialized demo corpus into %s", target)

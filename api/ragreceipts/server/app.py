@@ -298,14 +298,20 @@ def create_app(deps_factory: Callable[[], AppDeps] = build_deps) -> FastAPI:
                 "ingest", make_ingest_handler(deps.ingest_sink, deps.paths.corpora_dir)
             )
         deps.job_runner.start()
-        if deps.demo_ledger is not None and deps.qdrant is not None:
-            from ragreceipts.server.demo import seed_demo_qdrant
+        if deps.demo_ledger is not None:
+            from ragreceipts.server.demo import materialize_demo_corpus, seed_demo_qdrant
 
-            seed_demo_qdrant(
-                deps.qdrant,
+            materialize_demo_corpus(
                 deps.paths.demo_corpus_dir,
-                deps.demo_ledger.config,
+                deps.paths.corpora_dir,
+                deps.demo_ledger.config.demo_corpus_id,
             )
+            if deps.qdrant is not None:
+                seed_demo_qdrant(
+                    deps.qdrant,
+                    deps.paths.demo_corpus_dir,
+                    deps.demo_ledger.config,
+                )
         try:
             yield
         finally:
