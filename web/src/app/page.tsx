@@ -90,7 +90,7 @@ export default function Playground() {
       } else if (response.status === 403) {
         setBanner("Queries are limited to the demo corpus in the public demo.");
       } else {
-        setError(typeof detail === "string" ? detail : JSON.stringify(detail ?? "request failed"));
+        setError(typeof detail === "string" ? detail : detail ? JSON.stringify(detail) : "request failed");
       }
       setBusy(false);
       return;
