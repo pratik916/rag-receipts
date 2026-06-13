@@ -219,14 +219,15 @@ def materialize_demo_corpus(demo_corpus_dir: Path, corpora_dir: Path, corpus_id:
         return
 
     target.mkdir(parents=True, exist_ok=True)
-    # Copy the query-time artifacts only (not dense_vectors.npz).
-    for name in ("chunks.jsonl", "manifest.json"):
-        src_file = demo_corpus_dir / name
-        if src_file.exists():
-            shutil.copy2(src_file, target / name)
+    # Copy the query-time artifacts only (not dense_vectors.npz). manifest.json is the
+    # idempotency sentinel, so it is copied LAST — an interrupted startup then leaves no
+    # sentinel and the next start re-materializes rather than serving a partial corpus.
+    if (demo_corpus_dir / "chunks.jsonl").exists():
+        shutil.copy2(demo_corpus_dir / "chunks.jsonl", target / "chunks.jsonl")
     for name in ("sparse", "graph"):
         src_sub = demo_corpus_dir / name
         if src_sub.is_dir():
             shutil.copytree(src_sub, target / name, dirs_exist_ok=True)
+    shutil.copy2(src_manifest, target / "manifest.json")
 
     logger.info("Materialized demo corpus into %s", target)
