@@ -343,12 +343,23 @@ def _cmd_eval(args: argparse.Namespace) -> int:
         from ragreceipts.vendors.ragas_clients import make_anthropic_client
 
         ragas = RagasV04Judge(make_anthropic_client())
+    # server/pipeline.py owns the serving-side graph route-core factory; importing it
+    # here (lazily, to avoid a cli<->server.pipeline import cycle) keeps eval and serving
+    # building the graph route from one definition.
+    from ragreceipts.server.pipeline import _default_graph_retriever_factory
+
     runner = AblationRunner(
         core_factory=lambda cfg: _build_core_real(cfg, args.corpus, args.data_dir),
         claude=_make_claude(),
         store=RunStore(args.data_dir / "eval-runs.db"),
         data_dir=args.data_dir,
         ragas=ragas,
+        # Serving/eval symmetry: the eval router-on graph route reaches the SAME
+        # graph-only RetrievalCore the live server does (server/pipeline.py's
+        # _default_graph_retriever_factory). AblationRunner calls graph_factory(cfg),
+        # so we bind corpus/data_dir into the serving factory; it returns None when the
+        # corpus has no graph artifact (route stays unreachable -> honest s1 fallback).
+        graph_factory=lambda cfg: _default_graph_retriever_factory(cfg, args.corpus, args.data_dir),
     )
     try:
         doc = runner.run(

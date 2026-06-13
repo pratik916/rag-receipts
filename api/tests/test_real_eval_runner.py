@@ -69,6 +69,46 @@ def test_run_invokes_ablation_runner_with_single_preset(tmp_path):
     assert any("run-xyz" in msg for msg in messages)
 
 
+def test_build_runner_threads_graph_factory_mirroring_serving(tmp_path, monkeypatch):
+    """Serving/eval symmetry on the server eval plane: RealEvalRunner._build_runner (the
+    production default runner_factory) must pass a graph_factory into AblationRunner that
+    mirrors serving (server/pipeline._default_graph_retriever_factory). On a corpus with a
+    graph artifact, calling it with router-on yields the SAME `.retrieve`-shaped graph-only
+    core the live server builds — so a server-triggered router-on eval reaches graph
+    instead of silently falling back to s1 (the unwired eval-plane bug)."""
+    import ragreceipts.cli as cli
+    import ragreceipts.eval.runner as runner_mod
+    from ragreceipts.ingest.chunk_store import write_chunks
+    from ragreceipts.retrieval.core import RetrievalCore
+    from tests.fakes import FakeEmbed
+    from tests.graph_fixtures import fixture_chunks, write_graph_corpus
+
+    captured: dict = {}
+
+    class _Runner:
+        def __init__(self, **kw):
+            captured.update(kw)
+
+    write_graph_corpus(tmp_path)  # real offline graph artifact + raw/ + manifest
+    # serving reads the canonical chunks.jsonl; the graph route-core resolves chunk-by-id
+    # against it, so the corpus must carry it (write_graph_corpus only writes raw/+graph/).
+    write_chunks(tmp_path / "corpora" / "graph-harness" / "chunks.jsonl", fixture_chunks())
+    monkeypatch.setattr(runner_mod, "AblationRunner", _Runner)
+    monkeypatch.setattr(cli, "_make_claude", lambda: object())
+    monkeypatch.setattr(cli, "build_embed_transport", lambda: FakeEmbed())
+
+    RealEvalRunner(data_dir=tmp_path)._build_runner("graph-harness")
+    graph_factory = captured["graph_factory"]
+    assert graph_factory is not None
+    from ragreceipts.config import PRESETS
+
+    route_core = graph_factory(PRESETS["router-on"])
+    assert isinstance(route_core, RetrievalCore)
+    assert hasattr(route_core, "retrieve")
+    assert route_core._graph is not None
+    assert route_core._sparse is None and route_core._dense is None
+
+
 def test_construction_resolves_pinned_entry_points(tmp_path):
     # Drift guard in test form: the R9 names must import; signature drift reconciles
     # ONLY the adapter, never the EvalRunner protocol or the routes.
